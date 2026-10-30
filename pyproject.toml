@@ -21,9 +21,7 @@ dependencies = [
 
 [project.scripts]
 compintel = "compintel.cli:app"
-# Entry points `crewai run` / `crewai flow plot` look for (same names as the `crewai create flow` template).
-kickoff = "compintel.main:kickoff"
-plot = "compintel.main:plot"
+# M5 adds `kickoff` / `plot` (compintel.main) here: the entry points `crewai run` / `crewai flow plot` call.
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]
@@ -51,6 +49,8 @@ asyncio_default_fixture_loop_scope = "function"
 # --allow-hosts: the fake web server (M1+) is the one network target tests may reach.
 # --allow-unix-socket: asyncio's event loop needs a unix socketpair internally.
 addopts = "-q --disable-socket --allow-unix-socket --allow-hosts=127.0.0.1"
+# crewai 1.15.33 touches its own deprecated `function_calling_llm` field on every Agent; not ours to fix.
+filterwarnings = ["ignore::DeprecationWarning:crewai.agent.core"]
 
 [tool.pyright]
 include = ["src"]

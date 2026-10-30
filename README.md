@@ -5,20 +5,57 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** repository scaffold + dependency pins + API verification pass. M0 code not started yet.
+**Status:** M0 (Anthropic-only setup, $0 test fakes, cost ledger + budget gate, live hello) done.
 
 ## Setup
 
 ```bash
-uv sync                      # creates .venv (Python 3.12) from uv.lock; crewai needs <3.14
+uv sync                      # creates the project's own .venv (Python 3.12) from uv.lock; crewai needs <3.14
 cp .env.example .env         # then put your ANTHROPIC_API_KEY in .env (no OpenAI key, ever)
+uv run pytest                # $0: network blocked, no model calls, OPENAI_API_KEY unset
 ```
 
-Run commands are added to the table below as each milestone lands.
+`uv run …` always uses the project's `.venv`, never the system Python (3.14, which crewai doesn't support).
+
+## M0: run it yourself
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run pytest` | $0 | 16 tests, ~2 s. `tests/fakes.py` is the fake model everything is tested with |
+| `uv run compintel hello` | ~$0.0005 | One live Haiku call: a single agent classifies a headline into a typed `HeadlineTake` |
+| `uv run compintel hello "BahiBook hires a PM for GST e-invoicing"` | ~$0.0005 | Your own headline: watch `impact_on_us` change |
+| `uv run compintel hello --verbose` | ~$0.0005 | crewai's own trace of the agent run |
+| `uv run compintel hello --final` | ~$0.01 | Same call on Sonnet 5.5 (`MODEL_FINAL`) |
+| `uv run compintel costs` | $0 | Spend per model and agent from `runs/costs.jsonl`, against the $12 cap |
+
+### What happens when you run `compintel hello`
+
+1. `apply_env()` exports `MODEL=anthropic/claude-haiku-5-5` and turns crewai telemetry/tracing off,
+   **before** crewai is imported (crewai reads these on import).
+2. `listeners.install()` registers `CostListener` on crewai's **event bus**, and `hooks.install()` registers
+   `budget_gate` as an **`@on(PRE_MODEL_CALL)` hook**.
+3. `Agent(...).kickoff(prompt, response_format=HeadlineTake)` runs **one agent with no crew** (a "LiteAgent" run).
+4. Before the API request, `budget_gate` runs. If the ledger is at the $12 cap it raises `HookAborted`, and the call never happens.
+5. The native Anthropic provider sends the request with the `HeadlineTake` JSON schema and parses the reply
+   into the Pydantic object (`out.pydantic`).
+6. The provider emits `LLMCallCompletedEvent` with token usage. `CostListener` prices it and appends a row to
+   `runs/costs.jsonl` (on a background thread, so the CLI calls `crewai_event_bus.flush()` before printing).
+
+### Where each M0 concept lives
+
+| Concept | Code |
+|---|---|
+| Native Anthropic provider, explicit LLM / limits / embedder (no OpenAI defaults) | [src/compintel/config.py](src/compintel/config.py) |
+| `Agent.kickoff` + `response_format` (agent without a crew, typed output) | [src/compintel/hello.py](src/compintel/hello.py) |
+| Event bus + `BaseEventListener` → cost ledger | [src/compintel/listeners.py](src/compintel/listeners.py), [src/compintel/cost.py](src/compintel/cost.py) |
+| `@on` hook + `HookAborted` → spend cap | [src/compintel/hooks.py](src/compintel/hooks.py) |
+| Custom LLM interface (`BaseLLM`) → `ScriptedLLM`; `FakeEmbedder` | [tests/fakes.py](tests/fakes.py) |
+| $0 guards: no network, no OpenAI key, hooks/handlers cleared per test | [tests/conftest.py](tests/conftest.py), [tests/test_no_openai.py](tests/test_no_openai.py) |
+
+## Later milestones' commands
 
 | Command | Cost | Milestone |
 |---|---|---|
-| `uv run pytest` | $0 | M0 |
 | `python scripts/gen_world.py` · `python scripts/serve_fakeweb.py` | $0 | M1 |
 | `uv run compintel run --week 1\|2\|3` | ~$0.3–0.6 / week | M5 |
 | `uv run compintel chat` | cents | M7 |

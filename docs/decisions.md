@@ -70,15 +70,43 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 
 1. **Not scaffolded with `crewai create flow`.** The template uses hatchling, `requires-python <3.14` and an
    interactive provider prompt. The pyproject was written by hand to match P1/P2 (uv_build, exact pins, Python 3.12)
-   and copies the template's `[tool.crewai] type = "flow"` and `kickoff`/`plot` scripts so `crewai run` still works.
+   and copies the template's `[tool.crewai] type = "flow"`. The `kickoff`/`plot` scripts `crewai run` calls are
+   added in M5 together with `main.py`.
 2. **Resume uses `restore_from_state_id` for forks.** `inputs={"id": ...}` is deprecated; M5 will demonstrate the
    current resume path from the migration guide rather than `inputs.id`.
 3. **Haiku 5.5 output cap.** The native provider has no `claude-haiku-5` entry in its max-output table (falls back to
    32 000). Irrelevant because we always set `max_tokens` (1500), but noted.
 
+4. **Embedder = `onnx`** (all-MiniLM-L6-v2 via chromadb, zero new deps, ~80 MB download) instead of the spec's
+   `bge-small` through `sentence-transformers` (pulls torch, ~1–2 GB). Chosen at M0 kickoff.
+5. **Budget gate at `PRE_MODEL_CALL`, from M0** (spec: `EXECUTION_START` in M8). `Agent.kickoff` has no crew/flow
+   execution boundary, and a per-call check also stops a run that crosses the cap midway.
+6. **Hooks/handlers are installed explicitly** (`listeners.install()`, `hooks.install()` from the CLI) rather than at
+   import, so tests control them (`clear_all_hooks()` + `crewai_event_bus.scoped_handlers()` per test).
+
+## M0 findings (installed source + tests)
+
+- **Usage accounting.** The native provider's usage dict counts cache reads/writes *inside* `input_tokens`
+  (`cached_prompt_tokens`, `cache_creation_tokens` are subsets). `cost.split_usage` subtracts them so each token is
+  priced once. `LLMCallCompletedEvent` carries `model` (prefix stripped: `claude-haiku-5-5`), `usage`,
+  `response_id`, `agent_role`.
+- **The event bus runs sync handlers on a thread pool.** Anything reading the ledger right after a kickoff must call
+  `crewai_event_bus.flush()` first (CLI, budget gate, tests).
+- **`Agent.kickoff` returns a coroutine when an event loop is running** (i.e. inside a Flow). Sync code gets a
+  `LiteAgentOutput`; inside Flow methods use `kickoff_async` (M2 Scout).
+- **`response_format` with a custom LLM:** crewai passes the model class as `response_model` to `BaseLLM.call` and makes
+  one call; no ReAct parsing. `LiteAgentOutput.usage_metrics` is the per-call delta.
+- **⚠️ Structured output on Haiku 5.5.** `NATIVE_STRUCTURED_OUTPUT_MODELS` in the provider lists `claude-sonnet-5`
+  (so Sonnet 5.5 uses native JSON-schema output) but no `claude-haiku-5`, so Haiku 5.5 takes the *tool-based* fallback:
+  a `structured_output` tool with forced `tool_choice: {"type": "tool"}`. Forced tool choice is still accepted on
+  Haiku 5.5 (it's only removed on Sonnet 5.5 / Opus 5.5 / Fable 5.1), but Haiku 5.5 thinks by default and forced tool
+  use with thinking may be rejected. **The first live `compintel hello` settles this**; if it 400s, that is the
+  fix to discuss (not a patch around it).
+- **No `effort` control** in the native provider (no `output_config` passthrough). Haiku 5.5 runs at its default
+  (adaptive thinking, effort `medium`); `max_tokens=1500` bounds output + thinking per call.
+- **`BaseLLM` subclasses must pass `model=` in the constructor** (validated before field defaults apply).
+- **Pricing:** Sonnet 5.5 cache reads are **$0.20**/MTok (P2's `config/prices.json` has $0.10).
+
 ## Open questions for the developer
 
-- **Embedder** (needed from M4): `onnx` (all-MiniLM-L6-v2 via chromadb, **zero new deps**, ~80 MB download)
-  vs `sentence-transformer` + `BAAI/bge-small-en-v1.5` (spec's suggestion, pulls in `sentence-transformers` + torch,
-  ~1–2 GB). Recommendation: `onnx`.
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.
