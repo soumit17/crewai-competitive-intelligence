@@ -21,6 +21,8 @@ dependencies = [
 
 [project.scripts]
 compintel = "compintel.cli:app"
+# The MCP server agents launch over stdio. Short on purpose: crewai prefixes MCP tool names with the command.
+market-signals = "compintel.world.market:main"
 # M5 adds `kickoff` / `plot` (compintel.main) here: the entry points `crewai run` / `crewai flow plot` call.
 
 [build-system]
@@ -36,6 +38,13 @@ dev = [
     "pytest-socket==0.8.1",
     "ruff==0.17.3",
 ]
+# Only scripts/mcp_adapter_demo.py uses MCPServerAdapter; the agents use crewai's built-in `mcps` DSL. Same package
+# crewai-tools' own [mcp] extra pulls in. Kept out of the package's dependencies, but synced by default (below).
+mcp-adapter = ["mcpadapt==0.1.20"]
+
+[tool.uv]
+# Without this, a plain `uv sync` removes the group and MCPServerAdapter falls back to an interactive install prompt.
+default-groups = ["dev", "mcp-adapter"]
 
 # Tells the crewai CLI this project is a Flow (so `crewai run` calls the `kickoff` script).
 [tool.crewai]

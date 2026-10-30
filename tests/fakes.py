@@ -4,7 +4,8 @@ ScriptedLLM implements crewai's custom-LLM interface (subclass `BaseLLM`, implem
 steps as the native Anthropic provider (call context → started event → before-call hooks → completed event
 with usage), so listeners, the cost ledger and `@on` hooks see exactly what they would in a live run.
 
-M0 scope: text and structured (`response_model`) replies. Tool-call replies arrive with the tools in M2.
+Replies: text, structured (`response_model`), or tool calls (a list of `ToolCall`), returned as Anthropic
+`tool_use` blocks, the shape the native provider hands crewai's agent loop, which then runs the tools.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from anthropic.types import ToolUseBlock
 from crewai import BaseLLM
 from crewai.events.types.llm_events import LLMCallType
 from crewai.hooks.dispatch import HookAborted
@@ -31,11 +33,17 @@ DEFAULT_USAGE = {
 
 
 @dataclass
+class ToolCall:
+    name: str  # the sanitized tool name the LLM sees, e.g. "pricing_parse", "read_website_content"
+    args: dict[str, Any]
+
+
+@dataclass
 class Rule:
     """First matching rule answers. `None` matches anything.
 
     reply: str (text), dict or BaseModel (structured; validated against the call's response_model),
-    or a callable(messages, response_model) -> any of those.
+    list[ToolCall], or a callable(messages, response_model) -> any of those.
     """
 
     reply: Any
@@ -57,9 +65,8 @@ class ScriptedLLM(BaseLLM):
     calls: list[dict[str, Any]] = []
 
     def __init__(self, *rules: Rule, **kwargs: Any) -> None:
-        kwargs.setdefault(
-            "model", "claude-haiku-5-5"
-        )  # BaseLLM validates `model` before field defaults apply
+        # BaseLLM validates `model` before field defaults apply.
+        kwargs.setdefault("model", "claude-haiku-5-5")
         super().__init__(**kwargs)
         self._rules = list(rules)
         self.calls = []
@@ -83,7 +90,14 @@ class ScriptedLLM(BaseLLM):
                 )
                 self._invoke_before_llm_call_hooks(messages, from_agent)
                 role = getattr(from_agent, "role", None)
-                self.calls.append({"role": role, "messages": messages, "response_model": response_model})
+                self.calls.append(
+                    {
+                        "role": role,
+                        "messages": messages,
+                        "response_model": response_model,
+                        "tools": [_tool_name(t) for t in tools or []],
+                    }
+                )
                 reply = self._answer(role, messages, response_model)
             except (HookAborted, LLMCallBlockedError) as e:
                 self._emit_call_denied_event(e, from_task, from_agent)
@@ -111,6 +125,12 @@ class ScriptedLLM(BaseLLM):
                 continue
             self._used[i] = self._used.get(i, 0) + 1
             reply = rule.reply(messages, response_model) if callable(rule.reply) else rule.reply
+            if isinstance(reply, list) and reply and isinstance(reply[0], ToolCall):
+                n = len(self.calls)
+                return [
+                    ToolUseBlock(id=f"toolu_{n}_{k}", name=c.name, input=c.args, type="tool_use")
+                    for k, c in enumerate(reply)
+                ]
             if response_model is not None and isinstance(reply, dict | BaseModel):
                 data = reply.model_dump() if isinstance(reply, BaseModel) else reply
                 return response_model.model_validate(data)
@@ -118,10 +138,22 @@ class ScriptedLLM(BaseLLM):
         raise AssertionError(f"ScriptedLLM: no rule for role={role!r}; prompt starts {prompt[:300]!r}")
 
     def supports_function_calling(self) -> bool:
-        return False
+        return True  # like the native Anthropic provider: crewai sends tool schemas, not ReAct text
 
     def get_context_window_size(self) -> int:
         return 200_000
+
+
+def _tool_name(tool: Any) -> str:
+    """Tool schemas arrive OpenAI-style ({"function": {"name": ...}}) or flat ({"name": ...})."""
+    if isinstance(tool, dict):
+        return tool.get("function", tool).get("name", "?")
+    return getattr(tool, "name", "?")
+
+
+def tool_results(messages: list[Any]) -> str:
+    """All tool outputs the agent loop has fed back so far, for rules that react to what a tool returned."""
+    return json.dumps([m for m in messages if isinstance(m, dict) and m.get("role") == "tool"], default=str)
 
 
 class FakeEmbedder:

@@ -25,3 +25,49 @@ def test_costs_with_empty_ledger():
     result = runner.invoke(app, ["costs"])
     assert result.exit_code == 0
     assert "no spend recorded yet" in result.output
+
+
+def test_scout_command_checks_reports_against_ground_truth(world, monkeypatch):
+    from compintel import scouting
+    from tests.test_scout import ScriptedScout
+
+    week2 = {  # what a good week-2 scout reports, per company
+        "StockSathi": [
+            ("pricing_change", "Pro cut 30% to ₹699/month"),
+            ("feature_launch", "UPI Udhaar credit"),
+        ],
+        "ShelfMitra": [
+            ("funding", "Series B of ₹200 crore"),
+            ("hiring_expansion", "15 sales roles in Kolkata"),
+        ],
+        "BahiBook": [],
+    }
+
+    class GoodScout(ScriptedScout):
+        def __call__(self, messages, response_model):
+            out = super().__call__(messages, response_model)
+            if isinstance(out, dict):  # the SignalReport conversion: fill in the signals
+                c = out["company"]
+                out["signals"] = [
+                    {"id": f"{c}-2-{i}", "company": c, "kind": k, "detail": d, "source_ref": "x",
+                     "source_credibility": 0.9, "novelty": "new", "impact_on_us": "high"}
+                    for i, (k, d) in enumerate(week2[c], 1)
+                ]  # fmt: skip
+            return out
+
+    monkeypatch.setattr(scouting, "make_llm", lambda **_: ScriptedLLM(Rule(GoodScout(world, 2))))
+    result = runner.invoke(app, ["scout", "--week", "2"])
+    assert result.exit_code == 0, result.output
+    assert result.output.count("✓ material_signals") == 4
+    assert "✗" not in result.output
+    assert "via agents:" in result.output
+
+
+def test_scout_command_explains_a_missing_fake_web(monkeypatch):
+    monkeypatch.setenv("FAKEWEB_URL", "http://127.0.0.1:9")  # nothing listens on port 9
+    from compintel.config import get_settings
+
+    get_settings.cache_clear()
+    result = runner.invoke(app, ["scout", "--week", "1"])
+    assert result.exit_code != 0
+    assert "serve_fakeweb.py" in result.output

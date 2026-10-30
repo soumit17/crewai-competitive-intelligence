@@ -47,8 +47,7 @@ the "no OpenAI" guarantee comes from configuration + `test_no_openai.py`, not fr
 | Anthropic prompt caching | ✅ provider stamps `cache_control: ephemeral` itself | |
 | Env vars | ✅ `CREWAI_TRACING_ENABLED`, `CREWAI_DISABLE_TELEMETRY`, `OTEL_SDK_DISABLED`, `CREWAI_DISABLE_VERSION_CHECK`, `CREWAI_STORAGE_DIR`, `CREWAI_DESERIALIZE_CALLBACKS` | |
 
-Still to verify in their milestone: `cache_function` signature (M2), `mcps` DSL string format for a local
-stdio server (M2), `MCPServerAdapter` (M2), async feedback provider interface + resume API (M6).
+Still to verify in their milestone: async feedback provider interface + resume API (M6).
 
 ## Every place CrewAI defaults to OpenAI (Rule 3)
 
@@ -124,6 +123,46 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
     that week's sources.
 13. **Changelogs are cumulative with dated entries** (incl. "week 0" history), like real changelog pages; M2's
     ChangelogDiffTool diffs week N against N-1, and week 1 against its own dates.
+
+## M2 decisions
+
+14. **Scrape guard: escape hatch + hook (decided with the developer).** crewai-tools' `ScrapeWebsiteTool` fetches through
+    `safe_get`, whose SSRF guard blocks `127.0.0.0/8`. The only switch, `CREWAI_TOOLS_ALLOW_UNSAFE_PATHS=true`, is
+    process-wide and also lifts crewai-tools' file-path containment. `config.apply_env()` sets it inside compintel runs
+    only; `hooks.url_allowlist` (`PRE_TOOL_CALL`, `tools=["read_website_content"]`) allows exactly `FAKEWEB_URL`'s
+    host:port; `make_scout` fails closed if that hook isn't registered. M3 adds a file-path hook for FileReadTool.
+15. **`mcpadapt==0.1.20` added (decided with the developer)** in the `mcp-adapter` dependency group, synced by default via
+    `[tool.uv] default-groups` (a plain `uv sync` otherwise removes it and MCPServerAdapter shows an install prompt).
+16. **`market-signals` console script.** crewai names stdio MCP tools `"<command>_<args>_<tool>"`, capped at 64 chars;
+    with `sys.executable` + a script path the names became `home_soumit_..._040fb612` and the LLM couldn't find
+    `funding_rounds`. A bare command gives `market_signals_funding_rounds`. `scripts/mcp_market_signals.py` stays as a wrapper.
+17. **Hook tool names are sanitized names:** `read_website_content`, not the spec's `scrape_website`.
+18. **Our parsing tools take `(company, week)`, not HTML or URLs**: they build the fake-web URL themselves (no LLM-chosen
+    URL to police) and return the week-over-week diff computed in code.
+19. **Scouts get `max_tokens=4096`** (global default stays 1500). The first live week-2 run hit exactly 1500 output tokens
+    on every final answer (Haiku's thinking counts against it), truncating the report: 2/4 material signals.
+20. **SignalReport schema in the scout prompt.** With tools, crewai's loop sends no response schema; after the loop,
+    `Agent.kickoff` tries `response_format.model_validate_json(answer)` and only on failure calls the LLM Converter.
+    Without the schema Haiku answered clean JSON with invented fields (`kind: "pricing"`, `title`), so every scout paid
+    an extra conversion call. The schema (from crewai's own `generate_model_description`) removed it; verified live.
+21. **Kept `Agent.kickoff_async` × 3 over `kickoff_for_each`** (comparison in the README): 2× faster (kickoff_for_each is
+    sequential), and `Agent.copy()` drops `mcps` in crewai 1.15.33, so kickoff_for_each scouts silently lose MCP tools.
+    `test_crewai_agent_copy_drops_mcps` pins that behaviour and will fail when upstream fixes it.
+22. **`P3_DATA_DIR` setting** (like `P3_RUNS_DIR`) so tests run against a freshly generated world.
+
+## M2 findings
+
+- **Native tool calling with a custom LLM:** return a list of Anthropic `tool_use` blocks (`ToolUseBlock` with `name`,
+  `input`) from `BaseLLM.call` and crewai's AgentExecutor runs the tools (`call_llm_native_tools` → `execute_native_tool`).
+- **`cache_function(args, result) -> bool`** is called after each tool run with the tool's arguments and result;
+  `False` means "don't cache this result".
+- **MCP stdio `env` is merged with mcp's safe default environment** (PATH, HOME, ...); API keys are not passed to the
+  server subprocess.
+- **`HookAborted` at `PRE_TOOL_CALL` blocks only that call**: the tool result becomes "Tool execution blocked by hook.
+  Tool: <name>" (the abort reason is not shown to the model) and the agent continues. At `PRE_MODEL_CALL` it ends the run.
+- **Live results (Haiku 5.5):** week 2: 4/4 material signals, 10 calls, ~35 s, $0.0086. Week 3: BahiBook GST e-invoicing
+  PM, Kolkata office, 3.9 rating surfaced; the acquisition article filed as `rumor`, credibility 0.2. Quality notes for
+  M3 to handle: duplicate signals for one fact (pricing page + changelog), unchanged plans reported as `pricing_change`.
 
 ## Open questions for the developer
 

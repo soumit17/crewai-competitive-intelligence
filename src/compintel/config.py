@@ -31,8 +31,9 @@ class Settings(BaseSettings):
     embedder_provider: str = "onnx"
     embedder_model: str = "all-MiniLM-L6-v2"
     fakeweb_url: str = "http://127.0.0.1:8765"
-    # Tests point this at a tmp dir so the real cost ledger never sees fake data.
+    # Tests point these at tmp dirs: the real ledger never sees fake data; tests read a fresh world.
     p3_runs_dir: Path = PROJECT_ROOT / "runs"
+    p3_data_dir: Path = PROJECT_ROOT / "data"
 
 
 @lru_cache
@@ -56,6 +57,11 @@ def apply_env() -> None:
     s = get_settings()
     for key, value in _ENV_DEFAULTS.items():
         os.environ.setdefault(key, value if value is not None else s.model_dev)
+    # crewai-tools' SSRF guard blocks 127.0.0.1, i.e. our fake web server. Its only switch is this
+    # process-wide escape hatch (it also lifts file-path containment). Set inside compintel runs only,
+    # never in the shell; hooks.url_allowlist is the network policy instead, and scouts refuse to start
+    # without it.
+    os.environ["CREWAI_TOOLS_ALLOW_UNSAFE_PATHS"] = "true"
     # The native Anthropic provider reads the key from the environment when none is passed.
     if s.anthropic_api_key:
         os.environ.setdefault("ANTHROPIC_API_KEY", s.anthropic_api_key)

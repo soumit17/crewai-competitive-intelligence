@@ -73,3 +73,17 @@ def build_server(db_path: Path, as_of_week: int) -> FastMCP:
         return {"company": company, "as_of_week": as_of_week, "ratings": rows, "change_over_period": change}
 
     return mcp
+
+
+def main() -> None:
+    """Console script `market-signals` (stdio).
+
+    crewai prefixes MCP tool names with the server's command line, so a short command keeps them readable:
+    market_signals_funding_rounds, market_signals_app_rating_trend.
+    """
+    import os
+
+    from compintel.config import get_settings
+
+    db = Path(os.environ.get("MARKET_DB", get_settings().p3_data_dir / "market.sqlite"))
+    build_server(db, as_of_week=int(os.environ.get("MARKET_AS_OF_WEEK", "3"))).run()  # stdio transport

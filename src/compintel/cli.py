@@ -1,4 +1,4 @@
-"""`compintel` command line. M0 commands: hello, costs."""
+"""`compintel` command line. M0: hello, costs. M2: scout."""
 
 from __future__ import annotations
 
@@ -51,6 +51,80 @@ def hello(
     console.print(
         f"[yellow]this run:[/yellow] ${after - before:.6f}   [yellow]P3 total:[/yellow] ${after:.6f}"
     )
+
+
+def _require_fakeweb() -> None:
+    import urllib.request
+
+    url = f"{get_settings().fakeweb_url}/week-1/stocksathi/pricing.html"
+    try:
+        urllib.request.urlopen(url, timeout=3).close()
+    except OSError as e:
+        raise typer.BadParameter(
+            f"fake web not reachable at {url} ({e}). Start it: uv run python scripts/serve_fakeweb.py"
+        ) from e
+
+
+@app.command()
+def scout(
+    week: int = typer.Option(..., "--week", min=1, max=3, help="Week to scout."),
+    via: str = typer.Option(
+        "agents", "--via", help="agents = 3x Agent.kickoff_async; crew = kickoff_for_each."
+    ),
+    verbose: bool = typer.Option(False, "--verbose", help="crewai's agent verbose output."),
+) -> None:
+    """Live: scout all three competitors for a week, then check against ground truth. ~$0.01 on Haiku."""
+    if via not in ("agents", "crew"):
+        raise typer.BadParameter("--via must be 'agents' or 'crew'")
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    _require_fakeweb()
+    _bootstrap()
+    import asyncio
+    import time
+
+    from crewai.events.event_bus import crewai_event_bus
+
+    from compintel import scouting
+    from compintel.cost import get_ledger
+    from compintel.world.ground_truth import check_week
+
+    ledger = get_ledger()
+    before, rows_before = ledger.spent_usd, _ledger_rows()
+    started = time.perf_counter()
+    if via == "agents":
+        reports = asyncio.run(scouting.scout_all(week, verbose=verbose))
+    else:
+        reports = scouting.scout_all_crew(week, verbose=verbose)
+    elapsed = time.perf_counter() - started
+    crewai_event_bus.flush()
+
+    out = get_settings().p3_runs_dir / "scout" / f"week-{week}.{via}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({c: r.model_dump() for c, r in reports.items()}, indent=2, ensure_ascii=False))
+
+    table = Table("id", "kind", "impact", "novelty", "cred", "detail", show_lines=False)
+    for r in reports.values():
+        for s in r.signals:
+            table.add_row(s.id, s.kind, s.impact_on_us, s.novelty, f"{s.source_credibility:.2f}", s.detail)
+    console.print(table)
+
+    for group, matches in check_week(reports, week).items():
+        for m in matches:
+            mark = "[green]✓[/green]" if m.found else "[red]✗[/red]"
+            kind = "" if not m.found or m.kind_ok else f" [yellow](kind: {m.signal.kind})[/yellow]"  # type: ignore[union-attr]
+            console.print(f"{mark} {group}: {m.expected['company']} {m.expected['detail_contains']}{kind}")
+    calls = _ledger_rows() - rows_before
+    console.print(f"[dim]saved {out}[/dim]")
+    console.print(
+        f"[yellow]via {via}: {calls} LLM calls, {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "
+        f"[yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
+    )
+
+
+def _ledger_rows() -> int:
+    path = get_settings().p3_runs_dir / "costs.jsonl"
+    return len(path.read_text().splitlines()) if path.exists() else 0
 
 
 @app.command()

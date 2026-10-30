@@ -15,6 +15,9 @@ os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
 os.environ["CREWAI_TRACING_ENABLED"] = "false"
 os.environ["OTEL_SDK_DISABLED"] = "true"
 os.environ["CREWAI_DISABLE_VERSION_CHECK"] = "true"
+os.environ["CREWAI_TOOLS_ALLOW_UNSAFE_PATHS"] = (
+    "true"  # as config.apply_env() does; url_allowlist polices URLs
+)
 os.environ.pop("P3_RUNS_DIR", None)
 
 import pytest  # noqa: E402
@@ -40,3 +43,35 @@ def _isolated(tmp_path, monkeypatch):
     clear_all_hooks()
     get_settings.cache_clear()
     get_ledger.cache_clear()
+
+
+@pytest.fixture(scope="session")
+def world_dir(tmp_path_factory):
+    """A freshly generated mock world (data/ + knowledge/), shared by the whole test session."""
+    from compintel.world.generate import generate
+
+    root = tmp_path_factory.mktemp("world")
+    generate(root)
+    return root
+
+
+@pytest.fixture(scope="session")
+def _fakeweb_server(world_dir):
+    import threading
+
+    from compintel.world.fakeweb import make_server
+
+    server = make_server(world_dir / "data" / "fakeweb", port=0)  # any free port
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def world(world_dir, _fakeweb_server, monkeypatch):
+    """Point tools, MCP server and allowlist at the test world and its fake web server."""
+    monkeypatch.setenv("P3_DATA_DIR", str(world_dir / "data"))
+    monkeypatch.setenv("FAKEWEB_URL", _fakeweb_server)
+    get_settings.cache_clear()
+    return _fakeweb_server

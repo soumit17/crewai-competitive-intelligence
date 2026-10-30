@@ -1,4 +1,4 @@
-"""`@on` execution hooks (spec §12.1). M0: the budget gate. M2 adds the URL allowlist, M8 the rest.
+"""`@on` execution hooks (spec §12.1). M0: budget gate. M2: URL allowlist. M8 adds the rest.
 
 Hooks *control* (listeners only observe). Only `HookAborted` stops a run: any other exception raised in
 a hook is swallowed (fail-open), so a buggy hook can't crash a run but also can't protect it.
@@ -6,10 +6,17 @@ a hook is swallowed (fail-open), so a buggy hook can't crash a run but also can'
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from crewai.events.event_bus import crewai_event_bus
 from crewai.hooks import HookAborted, InterceptionPoint, on
+from crewai.hooks.dispatch import get_hooks
 
+from compintel.config import get_settings
 from compintel.cost import get_ledger
+
+# crewai sanitizes tool names before matching `tools=` filters: "Read website content" -> this.
+SCRAPE_TOOL = "read_website_content"
 
 
 def budget_gate(ctx) -> None:
@@ -28,6 +35,33 @@ def budget_gate(ctx) -> None:
         )
 
 
+def url_allowlist(ctx) -> None:
+    """The network policy for LLM-chosen URLs: only the fake web server.
+
+    crewai-tools' own SSRF guard blocks 127.0.0.1, so compintel runs switch it off
+    (CREWAI_TOOLS_ALLOW_UNSAFE_PATHS, see config.apply_env). This hook takes its place, and is stricter:
+    one host:port instead of "any public address".
+    """
+    allowed = urlparse(get_settings().fakeweb_url)
+    raw = str((ctx.tool_input or {}).get("website_url") or "")
+    url = urlparse(raw)
+    ok = (
+        url.scheme in ("http", "https")
+        and url.username is None  # "http://127.0.0.1:8765@evil.example" has hostname evil.example
+        and (url.hostname, url.port) == (allowed.hostname, allowed.port)
+    )
+    if not ok:
+        raise HookAborted(reason=f"URL not allowed: {raw!r} (only {allowed.netloc})", source="url-allowlist")
+
+
+def is_installed(hook) -> bool:
+    """True if `hook` is registered globally (`@on` with filters registers `hook._registered_hook`)."""
+    registered = [h for point in InterceptionPoint for h in get_hooks(point)]
+    return hook in registered or getattr(hook, "_registered_hook", None) in registered
+
+
 def install() -> None:
     """Register the global hooks. Tests clear them with `clear_all_hooks()` after each test."""
     on(InterceptionPoint.PRE_MODEL_CALL)(budget_gate)
+    # tools= scopes the hook: it only runs for the scrape tool, so other tool calls skip it entirely.
+    on(InterceptionPoint.PRE_TOOL_CALL, tools=[SCRAPE_TOOL])(url_allowlist)

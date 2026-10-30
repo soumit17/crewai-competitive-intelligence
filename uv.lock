@@ -368,6 +368,7 @@ wheels = [
 name = "compintel"
 version = "0.1.0"
 source = { editable = "." }
+default-groups = ["dev", "mcp-adapter"]
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "crewai", extra = ["anthropic"] },
@@ -386,6 +387,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-socket" },
     { name = "ruff" },
+]
+mcp-adapter = [
+    { name = "mcpadapt" },
 ]
 
 [package.metadata]
@@ -408,6 +412,7 @@ dev = [
     { name = "pytest-socket", specifier = "==0.8.1" },
     { name = "ruff", specifier = "==0.17.3" },
 ]
+mcp-adapter = [{ name = "mcpadapt", specifier = "==0.1.20" }]
 
 [[package]]
 name = "coverage"
@@ -1228,6 +1233,26 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ba/93/0142dc84a666daf8ad51a34268f34c12fd6fda4f3810c4be2504eecc8212/mcp-1.30.0.tar.gz", hash = "sha256:445414625fce5c295faa505bb11bacece661ab6f4028d57c935db57820b7a3e4", size = 680511, upload-time = "2026-09-07T14:34:15.845Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/f4/e58bc33317c92a0203664daaf00bf6f41166cc0149e5d6870a03f7cd004a/mcp-1.30.0-py3-none-any.whl", hash = "sha256:666edb5009503e1047c9d60346a756f94b261f05cc2625f23d41c728ffc484d0", size = 234581, upload-time = "2026-09-07T14:34:14.266Z" },
+]
+
+[package.optional-dependencies]
+ws = [
+    { name = "websockets" },
+]
+
+[[package]]
+name = "mcpadapt"
+version = "0.1.20"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonref" },
+    { name = "mcp", extra = ["ws"] },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/71/1bbbe157e55d30ab4a74fa878f6942cc0586e9820f03e03451a3d2297e9b/mcpadapt-0.1.20.tar.gz", hash = "sha256:4047c0da61e481dd0673a48936a427da9e6547c6cf0d580ff4e4761dcf058ed1", size = 4203656, upload-time = "2025-10-24T15:35:02.135Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/d8/5b6c8cf2070d765904fcb9066f8d7956cb9d399807d86c7fb7f7503b80bf/mcpadapt-0.1.20-py3-none-any.whl", hash = "sha256:117a661eb536dfb0b2a73e5730c2f5ad4e611263e014fb1cebaaff9e78a18f78", size = 19481, upload-time = "2025-10-24T15:35:00.159Z" },
 ]
 
 [[package]]

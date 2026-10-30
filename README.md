@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M1 (mock world: fake web, news DB, market-signals MCP server, ground truth) done.
+**Status:** M2 (tools, URL-allowlist hook, three parallel Signal Scouts) done.
 
 ## Setup
 
@@ -87,6 +87,59 @@ The storyline, and what each week should produce:
 | 3 | Rating 4.3 → 3.9; *rumor* of acquisition (credibility 0.2) | Kolkata office opens | **PM, GST e-invoicing** job post | routine, but surface BahiBook + discount the rumor |
 
 The knowledge docs deliberately overlap: UPI credit and GST e-invoicing are both on KiranaCloud's 2027 roadmap.
+
+## M2: tools and scouts
+
+Keep `uv run python scripts/serve_fakeweb.py --verbose` running in another terminal and watch the scouts' requests.
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run compintel scout --week 2` | ~$0.009, ~35 s | 3 scouts in parallel; signal table; ✓/✗ against `data/ground_truth/week-2.json` |
+| `uv run compintel scout --week 3` | ~$0.006 | The subtle week: BahiBook's GST e-invoicing PM surfaced, the acquisition rumor filed as `rumor` (credibility 0.2) |
+| `uv run compintel scout --week 2 --via crew` | ~$0.006, ~67 s | Same scout as a one-task Crew via `kickoff_for_each`: sequential, and it loses the MCP tools (see below) |
+| `uv run compintel scout --week 2 --verbose` | ~$0.009 | crewai's own trace: every tool call and result |
+| `uv run python scripts/mcp_adapter_demo.py` | $0 | MCP via `MCPServerAdapter` vs the `mcps` DSL, and what `Agent.copy()` does to each |
+
+Reports are saved to `runs/scout/week-N.<via>.json`.
+
+### What one scout does
+
+1. `make_scout(week)` builds an `Agent` with 4 tools plus `mcps=[MCPServerStdio("market-signals", env={"MARKET_AS_OF_WEEK": week})]`.
+   It refuses to build unless the `url_allowlist` hook is installed (see below).
+2. `agent.kickoff_async(prompt, response_format=SignalReport)` starts the agent loop. crewai launches the MCP server as a
+   subprocess and adds its tools as `market_signals_funding_rounds` / `market_signals_app_rating_trend`.
+3. **Loop:** Haiku asks for tools (native tool calling: Anthropic `tool_use` blocks), crewai runs them and feeds the
+   results back, and so on until Haiku answers. A scout typically uses 2–3 LLM calls: one batch of ~6 tool calls, then the answer.
+4. **Typed result:** crewai first tries `SignalReport.model_validate_json(final_answer)`. If that fails it makes one more
+   LLM call (the Converter). The prompt carries the schema so the first attempt succeeds.
+5. `scout_all(week)` runs three of these under `asyncio.gather`, so they wait on the API concurrently.
+
+| Tool | Kind | Why |
+|---|---|---|
+| `pricing_parse(company, week)` | `@tool` | Prices parsed in code (exact), with the week-over-week change computed |
+| `changelog_diff(company, week)` | `@tool` | Only entries added this week |
+| `news_search(company, week, min_credibility)` | `BaseTool` + `args_schema` + `cache_function` | Typed args the LLM sees; caches only non-empty results |
+| `read_website_content(website_url)` | built-in `ScrapeWebsiteTool` | Careers pages; the LLM picks the URL, so the hook polices it |
+| `market_signals_*` | MCP over stdio (`mcps` DSL) | Funding and ratings, only up to the run's week |
+
+### The URL allowlist (decided with you at M2 start)
+
+crewai-tools' scraper has its own SSRF guard, which blocks `127.0.0.1` and therefore our fake web. Its only off-switch,
+`CREWAI_TOOLS_ALLOW_UNSAFE_PATHS`, is process-wide. compintel sets it inside its own runs only (never in your shell),
+and the `@on(PRE_TOOL_CALL, tools=["read_website_content"])` hook `url_allowlist` becomes the network policy:
+`http(s)://127.0.0.1:8765` only, with no `user@host` tricks. A blocked call doesn't end the run: the agent receives
+"Tool execution blocked by hook" as the tool result and carries on. (A `PRE_MODEL_CALL` abort, like the budget
+gate, ends the run.)
+
+### Agents vs `kickoff_for_each` (live, week 2)
+
+| | `Agent.kickoff_async` × 3 + `gather` (kept) | one-task Crew + `kickoff_for_each` |
+|---|---|---|
+| Wall time | 35 s | 67 s: `kickoff_for_each` runs inputs sequentially |
+| LLM calls / cost | 10 / $0.0086 | 8 / $0.0064 (cheaper only because MCP calls were missing) |
+| Material signals found | **4/4** | 3/4: missed ShelfMitra's Series B |
+| Why | | `Crew.kickoff_for_each` copies the crew per input, and `Agent.copy()` drops `mcps` (crewai 1.15.33): no market tools |
+| Code | Agent + prompt | Agent + Task + Crew + `{placeholders}` |
 
 ## Later milestones' commands
 

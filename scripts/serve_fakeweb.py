@@ -7,13 +7,13 @@ uv run python scripts/serve_fakeweb.py --verbose  # log each request (handy to w
 import sys
 from urllib.parse import urlparse
 
-from compintel.config import PROJECT_ROOT, get_settings
+from compintel.config import get_settings
 from compintel.world.fakeweb import make_server
 
 if __name__ == "__main__":
     url = urlparse(get_settings().fakeweb_url)
     server = make_server(
-        PROJECT_ROOT / "data" / "fakeweb",
+        get_settings().p3_data_dir / "fakeweb",
         url.hostname or "127.0.0.1",
         url.port or 8765,
         verbose="--verbose" in sys.argv,
