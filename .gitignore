@@ -1,0 +1,36 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+
+# Generated mock world (spec §4.5): rebuilt by `python scripts/gen_world.py`; keep only ground truth
+data/*
+!data/ground_truth/
+
+# Run outputs: flow persistence, checkpoints, cost ledger, pending reviews, drafts
+runs/
+briefs/drafts/
+*.db
+
+# CrewAI local stores (memory / knowledge / training); wipe with `crewai reset-memories`
+.crewai/
+storage/
+*.pkl
+
+# Model caches (embedder downloads)
+.cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

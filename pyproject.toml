@@ -1,0 +1,68 @@
+[project]
+name = "compintel"
+version = "0.1.0"
+description = "CompIntel: weekly competitive-intelligence brief on CrewAI Crews + Flows (agentic frameworks lab, P3)"
+authors = [
+    { name = "Soumit", email = "soumit_bhowmick@hotmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+# Pins verified on 2026-10-30; see docs/decisions.md. crewai[anthropic] = native provider, no litellm extra.
+# mcp and rich are pinned to what crewai 1.15.33 resolves (mcp 1.30.0, rich <15), not their latest.
+dependencies = [
+    "beautifulsoup4==4.15.0",
+    "crewai[anthropic]==1.15.33",
+    "crewai-tools==1.15.33",
+    "mcp==1.30.0",
+    "pydantic-settings==2.16.2",
+    "rich==14.3.4",
+    "typer==0.27.3",
+]
+
+[project.scripts]
+compintel = "compintel.cli:app"
+# Entry points `crewai run` / `crewai flow plot` look for (same names as the `crewai create flow` template).
+kickoff = "compintel.main:kickoff"
+plot = "compintel.main:plot"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright==1.1.414",
+    "pytest==9.2.0",
+    "pytest-asyncio==1.4.1",
+    "pytest-cov==7.1.0",
+    "pytest-socket==0.8.1",
+    "ruff==0.17.3",
+]
+
+# Tells the crewai CLI this project is a Flow (so `crewai run` calls the `kickoff` script).
+[tool.crewai]
+type = "flow"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# --disable-socket: an accidental live call (Anthropic, HF model download) fails loudly instead of costing money.
+# --allow-hosts: the fake web server (M1+) is the one network target tests may reach.
+# --allow-unix-socket: asyncio's event loop needs a unix socketpair internally.
+addopts = "-q --disable-socket --allow-unix-socket --allow-hosts=127.0.0.1"
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]  # typer.Option(...) in defaults is typer's idiom
