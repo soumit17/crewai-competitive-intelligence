@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M0 (Anthropic-only setup, $0 test fakes, cost ledger + budget gate, live hello) done.
+**Status:** M1 (mock world: fake web, news DB, market-signals MCP server, ground truth) done.
 
 ## Setup
 
@@ -52,11 +52,46 @@ uv run pytest                # $0: network blocked, no model calls, OPENAI_API_K
 | Custom LLM interface (`BaseLLM`) → `ScriptedLLM`; `FakeEmbedder` | [tests/fakes.py](tests/fakes.py) |
 | $0 guards: no network, no OpenAI key, hooks/handlers cleared per test | [tests/conftest.py](tests/conftest.py), [tests/test_no_openai.py](tests/test_no_openai.py) |
 
+## M1: the mock world ($0)
+
+The agents never touch the real internet. Three weeks of fictional market signals are generated from one
+storyline file ([src/compintel/world/story.py](src/compintel/world/story.py)) and served locally.
+
+| Command | What to look at |
+|---|---|
+| `uv run python scripts/gen_world.py` | Writes `data/` and `knowledge/`. Deterministic: rerun it and nothing changes |
+| `uv run python scripts/serve_fakeweb.py --verbose` | Fake competitor websites on `127.0.0.1:8765`, logging each request. Keep it running from M2 on |
+| `curl http://127.0.0.1:8765/week-2/stocksathi/pricing.html` | Week 2's price cut (`₹699`, old price struck through). Try weeks 1 and 3 |
+| `curl http://127.0.0.1:8765/week-2/shelfmitra/careers.html` | The 15 Kolkata sales roles that appear in week 2 |
+| `sqlite3 data/news.sqlite "select week, company, source_credibility, title from articles"` | News with credibility scores. The week-3 rumor is 0.2 |
+| `cat data/ground_truth/week-3.json` | What a correct week-3 brief must contain, and must not claim |
+
+### What the agents will read (from M2 on)
+
+| Source | Served by | Per week |
+|---|---|---|
+| Pricing, changelog, careers pages | `scripts/serve_fakeweb.py` at `/week-N/<stocksathi\|shelfmitra\|bahibook>/<page>.html` | Snapshot of the site that week (changelog is cumulative) |
+| News articles + `source_credibility` | `data/news.sqlite` (NewsSearchTool, M2) | 2–4 articles |
+| Funding rounds, app-rating trend | MCP server `scripts/mcp_market_signals.py` (stdio) | Only data public by `MARKET_AS_OF_WEEK` |
+| KiranaCloud pricing, 2027 roadmap, customer profile | `knowledge/*.md` (knowledge sources, M4) | Static |
+
+Two leak guards keep a week-1 run from seeing week 2: the web server refuses directory listings (an agent can
+only open URLs it's given), and the MCP server filters by `MARKET_AS_OF_WEEK`, which the run sets.
+
+The storyline, and what each week should produce:
+
+| Week | StockSathi | ShelfMitra | BahiBook | Route |
+|---|---|---|---|---|
+| 1 | Dark mode, faster sync | Purchase-order approvals | Rounding bug fix | routine |
+| 2 | **Pro ₹999 → ₹699 (−30%)**, **UPI Udhaar** credit launch | **₹200 cr Series B**, **15 sales roles in Kolkata** | A5 layout fix | **material** |
+| 3 | Rating 4.3 → 3.9; *rumor* of acquisition (credibility 0.2) | Kolkata office opens | **PM, GST e-invoicing** job post | routine, but surface BahiBook + discount the rumor |
+
+The knowledge docs deliberately overlap: UPI credit and GST e-invoicing are both on KiranaCloud's 2027 roadmap.
+
 ## Later milestones' commands
 
 | Command | Cost | Milestone |
 |---|---|---|
-| `python scripts/gen_world.py` · `python scripts/serve_fakeweb.py` | $0 | M1 |
 | `uv run compintel run --week 1\|2\|3` | ~$0.3–0.6 / week | M5 |
 | `uv run compintel chat` | cents | M7 |
 

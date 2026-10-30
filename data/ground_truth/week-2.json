@@ -1,0 +1,50 @@
+{
+  "week": 2,
+  "expected_route": "material",
+  "material_signals": [
+    {
+      "company": "StockSathi",
+      "kind": "pricing_change",
+      "detail_contains": [
+        "699",
+        "30%"
+      ]
+    },
+    {
+      "company": "StockSathi",
+      "kind": "feature_launch",
+      "detail_contains": [
+        "UPI",
+        "credit"
+      ]
+    },
+    {
+      "company": "ShelfMitra",
+      "kind": "funding",
+      "detail_contains": [
+        "Series B",
+        "200"
+      ]
+    },
+    {
+      "company": "ShelfMitra",
+      "kind": "hiring_expansion",
+      "detail_contains": [
+        "Kolkata"
+      ]
+    }
+  ],
+  "must_surface": [],
+  "must_not_claim": [
+    "StockSathi acquired",
+    "StockSathi has been acquired",
+    "acquisition of StockSathi"
+  ],
+  "must_discount": [],
+  "expected_threat": {
+    "StockSathi": "high",
+    "ShelfMitra": "high",
+    "BahiBook": "low"
+  },
+  "notes": "StockSathi undercuts our ₹799 plan; ShelfMitra is funded and hiring 15 sales roles in our home city."
+}

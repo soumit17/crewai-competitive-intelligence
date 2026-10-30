@@ -1,0 +1,48 @@
+{
+  "week": 3,
+  "expected_route": "routine",
+  "material_signals": [],
+  "must_surface": [
+    {
+      "company": "BahiBook",
+      "kind": "hiring_expansion",
+      "detail_contains": [
+        "GST e-invoicing"
+      ]
+    },
+    {
+      "company": "ShelfMitra",
+      "kind": "hiring_expansion",
+      "detail_contains": [
+        "Kolkata",
+        "office"
+      ]
+    },
+    {
+      "company": "StockSathi",
+      "kind": "rating_change",
+      "detail_contains": [
+        "3.9"
+      ]
+    }
+  ],
+  "must_not_claim": [
+    "StockSathi acquired",
+    "StockSathi has been acquired",
+    "acquisition of StockSathi"
+  ],
+  "must_discount": [
+    {
+      "company": "StockSathi",
+      "detail_contains": [
+        "acqui"
+      ]
+    }
+  ],
+  "expected_threat": {
+    "StockSathi": "medium",
+    "ShelfMitra": "high",
+    "BahiBook": "medium"
+  },
+  "notes": "Routine: the Kolkata office continues week 2's expansion (an update, not new). BahiBook's GST e-invoicing PM hints at overlap with our 2027 roadmap. The acquisition rumor (credibility 0.2) must be discounted."
+}

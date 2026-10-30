@@ -66,3 +66,7 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["B008"]  # typer.Option(...) in defaults is typer's idiom
+
+[tool.ruff.lint.per-file-ignores]
+# The storyline is a data table: one article / changelog entry per line reads better than wrapped strings.
+"src/compintel/world/story.py" = ["E501"]

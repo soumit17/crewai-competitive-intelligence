@@ -1,0 +1,18 @@
+{
+  "week": 1,
+  "expected_route": "routine",
+  "material_signals": [],
+  "must_surface": [],
+  "must_not_claim": [
+    "StockSathi acquired",
+    "StockSathi has been acquired",
+    "acquisition of StockSathi"
+  ],
+  "must_discount": [],
+  "expected_threat": {
+    "StockSathi": "low",
+    "ShelfMitra": "low",
+    "BahiBook": "low"
+  },
+  "notes": "Baseline: blog posts, small features and bug fixes only."
+}

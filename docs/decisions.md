@@ -96,16 +96,34 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   `LiteAgentOutput`; inside Flow methods use `kickoff_async` (M2 Scout).
 - **`response_format` with a custom LLM:** crewai passes the model class as `response_model` to `BaseLLM.call` and makes
   one call; no ReAct parsing. `LiteAgentOutput.usage_metrics` is the per-call delta.
-- **⚠️ Structured output on Haiku 5.5.** `NATIVE_STRUCTURED_OUTPUT_MODELS` in the provider lists `claude-sonnet-5`
+- **Structured output on Haiku 5.5.** `NATIVE_STRUCTURED_OUTPUT_MODELS` in the provider lists `claude-sonnet-5`
   (so Sonnet 5.5 uses native JSON-schema output) but no `claude-haiku-5`, so Haiku 5.5 takes the *tool-based* fallback:
-  a `structured_output` tool with forced `tool_choice: {"type": "tool"}`. Forced tool choice is still accepted on
-  Haiku 5.5 (it's only removed on Sonnet 5.5 / Opus 5.5 / Fable 5.1), but Haiku 5.5 thinks by default and forced tool
-  use with thinking may be rejected. **The first live `compintel hello` settles this**; if it 400s, that is the
-  fix to discuss (not a patch around it).
+  a `structured_output` tool with forced `tool_choice: {"type": "tool"}`. **Verified live (2026-10-30): it works.**
+  First `compintel hello`: 20 input + 857 cache-write + 176 output tokens = $0.000197. The provider stamped
+  `cache_control` on its own, so the agent's system prompt was written to the prompt cache on the first call.
 - **No `effort` control** in the native provider (no `output_config` passthrough). Haiku 5.5 runs at its default
   (adaptive thinking, effort `medium`); `max_tokens=1500` bounds output + thinking per call.
 - **`BaseLLM` subclasses must pass `model=` in the constructor** (validated before field defaults apply).
 - **Pricing:** Sonnet 5.5 cache reads are **$0.20**/MTok (P2's `config/prices.json` has $0.10).
+
+## M1 decisions
+
+7. **World logic lives in `src/compintel/world/`, scripts are thin wrappers.** Tests import the generator, server and
+   MCP server directly. `story.py` is the single source of truth; HTML, SQLite, ground truth are rendered from it.
+8. **MCP "as of" week comes from the server's environment (`MARKET_AS_OF_WEEK`), not a tool argument.** crewai's
+   `MCPServerStdio` has an `env` field, so each weekly run starts the server with its week. The spec's tool signatures
+   (`funding_rounds(company)`, `app_rating_trend(company, weeks)`) stay unchanged and future data can't leak.
+9. **Fake web disables directory listings** so an agent can only fetch URLs it is given.
+10. **Company names checked** (2026-10-30 web search): no notable real company named KiranaCloud, StockSathi, ShelfMitra
+    or BahiBook. News outlets are fictional too (Retail Tech Daily, The Mumbai Ledger, Startup Gupshup, ...).
+11. **`battlecard_template.pdf` deferred to M4.** No PDF writer is in §19.2, and `PDFKnowledgeSource`'s reader dependency
+    has to be checked first; M4 generates the PDF together with the knowledge sources that read it.
+12. **Ground truth extended:** besides the spec's `material_signals` / `must_not_claim` / `expected_threat`, each week has
+    `must_surface` (subtle signals a routine brief must still mention: week 3's BahiBook PM, Kolkata office, rating
+    dip) and `must_discount` (the acquisition rumor). A test asserts every `detail_contains` substring is findable in
+    that week's sources.
+13. **Changelogs are cumulative with dated entries** (incl. "week 0" history), like real changelog pages; M2's
+    ChangelogDiffTool diffs week N against N-1, and week 1 against its own dates.
 
 ## Open questions for the developer
 
