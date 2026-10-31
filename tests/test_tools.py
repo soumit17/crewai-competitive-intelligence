@@ -57,3 +57,20 @@ def test_cache_function_caches_hits_only():
     assert cache_only_hits({}, json.dumps({"articles": []})) is False
     assert cache_only_hits({}, "Error: unknown company") is False
     assert NewsSearchTool().cache_function is cache_only_hits
+
+
+def test_render_brief_is_a_result_as_answer_tool_reading_the_approved_draft():
+    from pathlib import Path
+
+    from compintel.models import Brief
+    from compintel.tools.render_brief import RenderBriefTool, draft_path, render_markdown
+    from tests.test_guardrails import GOOD
+
+    tool = RenderBriefTool()
+    assert tool.result_as_answer and tool.name == "render_brief"
+    assert tool.run(week=2).startswith("Error: no approved brief")
+    draft_path(2).parent.mkdir(parents=True)
+    Path(draft_path(2)).write_text(json.dumps(GOOD))
+    md = tool.run(week=2)
+    assert md == render_markdown(Brief.model_validate(GOOD))
+    assert md.startswith("# Week 02: StockSathi undercuts us") and "| StockSathi | **high** |" in md

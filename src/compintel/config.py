@@ -84,6 +84,12 @@ def make_llm(final: bool = False, max_tokens: int | None = None) -> LLM:
     return LLM(model=model_id(final), max_tokens=max_tokens or s.max_tokens)
 
 
+# Agents whose answer is a whole structured document (a SignalReport, a Brief) need more than MAX_TOKENS:
+# Haiku's thinking counts against max_tokens, and at 1500 both the M2 scouts and the M3 writer were cut off
+# live (a truncated report; an empty answer after thinking used up the budget). 4096 still truncated a week-3
+# Brief. Worst case at 8192 on Haiku: $0.004 per call.
+LONG_OUTPUT_MAX_TOKENS = 8192
+
 # Every agent gets explicit limits (spec Rule 8): CrewAI's ReAct loop is the main way spend runs away.
 AGENT_LIMITS: dict[str, Any] = {"max_iter": 8, "max_rpm": 20, "max_execution_time": 180}
 

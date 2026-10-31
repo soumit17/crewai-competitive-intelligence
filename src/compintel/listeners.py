@@ -1,4 +1,4 @@
-"""Event listeners on crewai's event bus (spec §12.3). M0: the cost ledger. M8 adds the live console.
+"""Event listeners on crewai's event bus (spec §12.3). M0: cost ledger. M3: guardrail log. M8: live console.
 
 Listeners *observe*; they can't stop a run (that's what hooks are for, see hooks.py). crewai runs sync
 handlers on a thread pool, so callers that read the ledger right after a kickoff must first call
@@ -11,6 +11,7 @@ from typing import Any
 
 from crewai.events import BaseEventListener, LLMCallCompletedEvent
 from crewai.events.event_bus import CrewAIEventsBus
+from crewai.events.types.llm_guardrail_events import LLMGuardrailCompletedEvent
 from rich.console import Console
 
 from compintel.cost import get_ledger
@@ -33,6 +34,27 @@ class CostListener(BaseEventListener):
             except KeyError as e:
                 # The bus swallows handler exceptions; say it loudly instead of losing the cost silently.
                 console.print(f"[red]cost ledger: {e}[/red]")
+
+
+class GuardrailLog(BaseEventListener):
+    """Every guardrail verdict of a run, function and LLM alike (crewai emits the same event for both)."""
+
+    def __init__(self) -> None:
+        self.entries: list[dict[str, Any]] = []
+        super().__init__()
+
+    def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
+        @crewai_event_bus.on(LLMGuardrailCompletedEvent)
+        def on_guardrail(source: Any, event: LLMGuardrailCompletedEvent) -> None:
+            self.entries.append(
+                {
+                    "type": event.guardrail_type,  # "function" or "llm"
+                    "name": event.guardrail_name,
+                    "attempt": event.retry_count + 1,
+                    "passed": event.success,
+                    "error": event.error,
+                }
+            )
 
 
 def install() -> CostListener:

@@ -63,3 +63,14 @@ def test_scouts_refuse_to_start_without_the_allowlist():
     # conftest cleared all hooks; the scrape tool's own SSRF guard is off, so no allowlist = no scout.
     with pytest.raises(RuntimeError, match="url_allowlist"):
         scouting.make_scout(2, llm=ScriptedLLM())
+
+
+@pytest.mark.parametrize("path", ["briefs/week-01.md", "briefs/drafts/week-02.json"])
+def test_file_reads_under_briefs_pass(path):
+    hooks.file_read_allowlist(SimpleNamespace(tool_input={"file_path": path}))
+
+
+@pytest.mark.parametrize("path", [".env", "briefs/../.env", "/etc/passwd", "../briefs/week-01.md", "", None])
+def test_file_reads_elsewhere_are_aborted(path):
+    with pytest.raises(HookAborted, match="File not allowed"):
+        hooks.file_read_allowlist(SimpleNamespace(tool_input={"file_path": path} if path is not None else {}))

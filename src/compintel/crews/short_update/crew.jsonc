@@ -1,0 +1,54 @@
+// ShortUpdateCrew (spec §8.2): the routine-week crew, JSON-first. Loaded with crewai's load_crew() from
+// compintel/crews/short_update/__init__.py. {"python": ...} refs resolve in crew_refs.py (crewai only imports from
+// this folder). Sequential: classify -> write (guardrails) -> render (verbatim tool).
+{
+  "name": "Short Update Crew",
+  "agents": ["market_analyst", "brief_writer"],
+  // Sequential: each task runs once, in order, with a fixed agent. No manager, so no delegation overhead.
+  "process": "sequential",
+  // Registers this run's signal ids so the citation guardrail can reject invented ones.
+  "before_kickoff_callbacks": [{"python": "crew_refs.register_signals"}],
+  "tasks": [
+    {
+      "name": "classify_signals",
+      "agent": "market_analyst",
+      "description": "Week {week}. Assess how much each competitor threatens KiranaCloud this week.\nKiranaCloud: Kolkata kirana-store SaaS, Dukaan plan ₹799/month, 2027 roadmap: GST e-invoicing (Q1) and UPI credit (Q2).\nThis week's signals (JSON): {signals}\nRules: exactly one assessment each for StockSathi, ShelfMitra and BahiBook. A threat is high only for new, credible signals with high impact on us. Signals with credibility below 0.5 are unverified and cannot raise a threat. Treat two signals about the same fact as one. In the rationale cite ids in square brackets; list the same ids in signal_ids.",
+      "expected_output": "Three threat assessments, one per competitor, each with cited signal ids.",
+      // A model class, not list[...]: ThreatAssessments wraps the list.
+      "output_pydantic": {"python": "crew_refs.ThreatAssessments"}
+    },
+    {
+      "name": "write_short_brief",
+      "agent": "brief_writer",
+      // Receives classify_signals' output; the signals are repeated below because the brief cites their ids.
+      // {brief_schema}: with a tool on the agent, crewai's loop sends no response schema (as with the M2 scouts).
+      "context": ["classify_signals"],
+      "description": "Write the routine weekly brief for week {week} from the threat assessments in your context and these signals (JSON): {signals}\nPrevious brief: {previous_brief}. If that is a file path, read it with the file tool and say in since_last_week what changed; if it is 'none', since_last_week is [\"First brief: no earlier week to compare.\"].\nRules: route is \"routine\". Be brief: the whole brief reads in two minutes. One-line headline. tl_dr has at most 5 items of at most 30 words, the biggest threat to our Kolkata market first, and every item cites signal ids in square brackets, e.g. [ShelfMitra-{week}-2]. threats repeats the three assessments, each rationale at most two sentences. 1 to 3 recommendations, each with signal_ids. watchlist holds at most 3 weak or early signals. discounted_claims lists every signal with credibility below 0.5 as unverified, citing its id; never state such a claim as fact anywhere else. Cite only ids from the signals above.\nReturn only the Brief as one JSON object matching this schema, no prose and no code fences: {brief_schema}",
+      "expected_output": "The Brief.",
+      "output_pydantic": {"python": "crew_refs.Brief"},
+      // Order matters: crewai retries each guardrail until it passes and re-checks the retry with that guardrail
+      // only, never the earlier ones. So the LLM-checked rule (what only reading can judge, worded to be
+      // decidable from the brief alone) goes first, and the deterministic checks against the real inputs
+      // (citations, credibility) go last: they get the final word on whatever the retries produce.
+      "guardrails": [
+        "Judge only from the brief's own text. A claim the brief itself calls unverified, rumored, unconfirmed or speculative must appear only under discounted_claims and must not be stated as fact anywhere else. Do not ask for credibility scores; they are checked separately.",
+        {"python": "crew_refs.every_claim_cites_signal"},
+        {"python": "crew_refs.low_credibility_only_discounted"}
+      ],
+      "guardrail_max_retries": 2,
+      // Saves the approved Brief as briefs/drafts/week-NN.json: the render task's tool reads it.
+      "callback": {"python": "crew_refs.save_draft"}
+    },
+    {
+      "name": "render_draft",
+      "agent": "brief_writer",
+      "description": "Call render_brief with week={week}. Its output is your final answer, unchanged.",
+      "expected_output": "The rendered markdown brief.",
+      // result_as_answer tool: the markdown becomes the task output verbatim, and output_file saves it.
+      "tools": ["compintel.tools.render_brief:RenderBriefTool"],
+      // cwd-relative: crewai refuses inputs that would make output_file absolute.
+      "output_file": "briefs/drafts/week-{week_nn}.md"
+    }
+  ],
+  "inputs": {"week": 1, "week_nn": "01", "signals": "[]", "previous_brief": "none", "brief_schema": "{}"}
+}

@@ -164,6 +164,62 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   PM, Kolkata office, 3.9 rating surfaced; the acquisition article filed as `rumor`, credibility 0.2. Quality notes for
   M3 to handle: duplicate signals for one fact (pricing page + changelog), unchanged plans reported as `pricing_change`.
 
+## M3 decisions
+
+23. **Three tasks instead of two.** `output_file` writes `pydantic.model_dump_json()` when `output_pydantic` is set,
+    so the spec's `write_short_brief` with both `output_pydantic=Brief` and `output_file=…md` would write JSON into
+    a .md. `write_short_brief` produces the typed Brief (guardrails, callback); a small `render_draft` task calls
+    `RenderBriefTool` (`result_as_answer=True`) and its verbatim markdown goes to `output_file`.
+24. **`crew_refs.py` in the crew folder.** crewai's JSON loader imports `{"python": ...}` references only from files
+    under the crew file's own folder (`load_crew` fixes the project root there). With our src layout,
+    `compintel.models.Brief` is outside it. `crew_refs.py` re-exports the real objects, so identities are kept.
+    Tool `"module:Class"` refs are not restricted, so `RenderBriefTool` and `FileReadTool` are referenced directly.
+25. **LLMs via `compintel/llms.py`** (PEP 562 `__getattr__` → `config.make_llm`), referenced as
+    `crew_refs.analyst` / `crew_refs.writer`. JSON has no env interpolation, and hard-coding `anthropic/...` in
+    JSON would bypass config. `llms.scope(fake=...)` must wrap the *load*: `Task` binds a string guardrail to the
+    agent's LLM at construction (`LLMGuardrail(llm=self.agent.llm)`), so swapping `agent.llm` later leaves the
+    guardrail on the real model.
+26. **Credibility rule is a function guardrail** (`low_credibility_only_discounted`), and the string guardrail is
+    reworded to what can be judged from the brief alone. See the README for the live evidence. The spec's own
+    §12.2 note (string guardrails for checkpoint-safety) is revisited in M5 when checkpointing arrives.
+27. **Guardrail order: LLM rule first, function checks last.** crewai retries each guardrail in its own loop and
+    re-checks a retry only with that guardrail (`_invoke_guardrail_function`). With functions first, a retry asked
+    for by the LLM rule skipped the citation checks (seen live: a truncated, Converter-rebuilt draft got through).
+    Trade-off: a function check's retry is not shown to the LLM rule again. Pinned by
+    `test_a_retry_is_rechecked_only_by_the_guardrail_that_asked_for_it`.
+28. **Citation guardrail checks ids against the run's real inputs**: a crew `before_kickoff_callbacks` entry
+    (`register_signals`) records this run's ids and low-credibility ids (module-level; one crew run at a time).
+29. **Writer gets the Brief schema in its prompt** (`{brief_schema}` input), as the M2 scouts did: an agent with a
+    tool runs crewai's tool loop, which sends no response schema. The tool-less analyst gets it natively.
+30. **`LONG_OUTPUT_MAX_TOKENS = 8192`** in config for agents whose answer is a whole document (scouts, writer).
+    Live at 1500: empty answers after thinking used the budget ("Invalid response from LLM call - None or empty",
+    3 crewai retries, then failure). At 4096 a week-3 Brief was still truncated. Plus brevity rules in the prompt.
+31. **Drafts are cwd-relative (`briefs/drafts/`).** crewai rejects inputs that would make `output_file` absolute, so
+    the CLI chdirs to the project root (as `crewai run` assumes) and tests run in a tmp cwd.
+32. **`file_read_allowlist` hook** (`PRE_TOOL_CALL`, `read_a_files_content`): FileReadTool may only read under
+    `briefs/` (paths resolved, so `briefs/../.env` fails). Needed because the M2 escape hatch also lifts
+    FileReadTool's own `base_dir` containment. `short_update.load()` fails closed without it.
+33. **Market Analyst has no tools in this crew** (spec §7 lists MCP + News): in a routine week the scouts already
+    gathered everything, and a tool-less agent gets native structured output in one call.
+34. **`markdown=True` is left for the deep dive (M4)**: here the markdown comes from deterministic rendering.
+35. **`crew.jsonc` has no `memory`/`embedder` yet**: unified Memory arrives in M7.
+
+## M3 findings
+
+- **Task order of operations** (`Task._execute_core`): agent result → (if guardrails) guardrails, each retrying in
+  its own loop → `POST_STEP` hook → task `callback` → crew `task_callback` → `output_file` → `TaskCompletedEvent`.
+  Without guardrails, `output_pydantic` conversion happens before; with guardrails it happens after a guardrail
+  returns a string. A guardrail that returns a `TaskOutput` is kept as-is (no conversion), which our function
+  guardrails use to hand back the parsed Brief.
+- **`LLMGuardrail` is a hidden agent**: role "Guardrail Agent", `Agent.kickoff(response_format=LLMGuardrailResult)`,
+  on the task agent's LLM. It sees only `task_output.raw` and the rule text.
+- **Guardrail events cover both kinds**: `LLMGuardrailCompletedEvent` (despite the name) fires for function guardrails
+  too, with `guardrail_type` and `guardrail_name`; `listeners.GuardrailLog` collects them for the CLI.
+- **`result_as_answer`**: the agent loop ends right after the tool returns; no further LLM call (1 call for render).
+- **Live runs (Haiku 5.5):** week 1: 6 calls, $0.0071 (one LLM-rule retry). Week 3: 5 calls, $0.0061 (the credibility
+  function caught the rumor used as fact, retry passed); threat levels match ground truth 3/3; 429 words.
+- **Backstory experiment:** +8% input tokens for 193 vs 18 words, identical judgements (README table).
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

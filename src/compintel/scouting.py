@@ -20,7 +20,7 @@ from crewai.utilities.pydantic_schema_utils import generate_model_description
 from crewai_tools import ScrapeWebsiteTool
 
 from compintel import hooks
-from compintel.config import AGENT_LIMITS, get_settings, make_llm
+from compintel.config import AGENT_LIMITS, LONG_OUTPUT_MAX_TOKENS, get_settings, make_llm
 from compintel.models import SignalReport
 from compintel.tools.changelog_diff import changelog_diff
 from compintel.tools.news_search import NewsSearchTool
@@ -31,9 +31,6 @@ SCOUT_ROLE = "Competitive Signal Scout"
 MARKET_COMMAND = "market-signals"
 # A scout makes ~6 tool calls (pricing, changelog, careers ×2, news, funding, ratings) before answering.
 SCOUT_LIMITS = {**AGENT_LIMITS, "max_iter": 10}
-# The final answer lists every signal with all fields, and Haiku's thinking counts against max_tokens too.
-# At the global 1500 the first live week-2 run was cut off mid-report (2 of 4 material signals lost).
-SCOUT_MAX_TOKENS = 4096
 # During the tool loop crewai sends no response schema, so the model can't know SignalReport's fields; only
 # the Converter (a separate LLM call after the loop) sees it. Put the same schema in the prompt, built by the
 # same crewai helper: the final answer then validates directly and the conversion call is skipped.
@@ -70,7 +67,7 @@ def make_scout(week: int, llm: BaseLLM | None = None, verbose: bool = False) -> 
             "You track Indian retail-tech rivals for KiranaCloud, a Kolkata kirana-store SaaS "
             "(₹799/month Dukaan plan). You report facts, cite sources, and never present rumors as facts."
         ),
-        llm=llm or make_llm(max_tokens=SCOUT_MAX_TOKENS),
+        llm=llm or make_llm(max_tokens=LONG_OUTPUT_MAX_TOKENS),
         tools=[NewsSearchTool(), ScrapeWebsiteTool(), pricing_parse, changelog_diff],
         mcps=[market_mcp(week)],
         verbose=verbose,

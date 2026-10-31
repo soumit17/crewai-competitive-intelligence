@@ -30,6 +30,12 @@ from compintel.cost import get_ledger  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _isolated(tmp_path, monkeypatch):
+    # Crews write cwd-relative briefs/ (crewai's output_file can't be made absolute from inputs): run in tmp.
+    monkeypatch.chdir(tmp_path)
+    from compintel import guardrails
+
+    guardrails._known_ids.clear()
+    guardrails._low_credibility.clear()
     monkeypatch.setenv("P3_RUNS_DIR", str(tmp_path / "runs"))
     # crewai's own local stores (memory, knowledge, flow persistence default dir) go to tmp too.
     monkeypatch.setenv("CREWAI_STORAGE_DIR", str(tmp_path / "crewai_storage"))

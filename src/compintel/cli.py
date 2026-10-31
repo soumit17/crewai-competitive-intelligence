@@ -1,4 +1,4 @@
-"""`compintel` command line. M0: hello, costs. M2: scout."""
+"""`compintel` command line. M0: hello, costs. M2: scout. M3: brief."""
 
 from __future__ import annotations
 
@@ -119,6 +119,53 @@ def scout(
     console.print(
         f"[yellow]via {via}: {calls} LLM calls, {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "
         f"[yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
+    )
+
+
+@app.command()
+def brief(
+    week: int = typer.Option(..., "--week", min=1, max=3, help="Week to write the routine brief for."),
+    final: bool = typer.Option(False, "--final", help="Brief Writer on MODEL_FINAL (Sonnet)."),
+) -> None:
+    """Live: run ShortUpdateCrew on saved scout reports (runs/scout/week-N.agents.json). ~$0.005 on Haiku."""
+    import os
+
+    from compintel.config import PROJECT_ROOT
+    from compintel.models import SignalReport
+
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    scout_file = get_settings().p3_runs_dir / "scout" / f"week-{week}.agents.json"
+    if not scout_file.exists():
+        raise typer.BadParameter(f"{scout_file} not found; run `compintel scout --week {week}` first")
+    reports = {c: SignalReport.model_validate(r) for c, r in json.loads(scout_file.read_text()).items()}
+    _bootstrap()
+    # crewai's output_file is cwd-relative (inputs can't make it absolute); like `crewai run`, use the root.
+    os.chdir(PROJECT_ROOT)
+    import time
+
+    from crewai.events.event_bus import crewai_event_bus
+
+    from compintel.cost import get_ledger
+    from compintel.crews import short_update
+    from compintel.listeners import GuardrailLog
+
+    log = GuardrailLog()
+    ledger = get_ledger()
+    before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
+    result = short_update.run(week, reports, final=final)
+    elapsed = time.perf_counter() - started
+    crewai_event_bus.flush()
+
+    console.print(result.markdown)
+    for e in log.entries:
+        mark = "[green]pass[/green]" if e["passed"] else "[red]FAIL → retry[/red]"
+        detail = "" if e["passed"] else f": {e['error']}"
+        console.print(f"guardrail {e['type']:8} {e['name'][:60]!r} attempt {e['attempt']}: {mark}{detail}")
+    console.print(f"[dim]wrote briefs/drafts/week-{week:02d}.md and .json[/dim]")
+    console.print(
+        f"[yellow]{_ledger_rows() - rows_before} LLM calls, {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}"
+        f"[/yellow]   [yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
     )
 
 

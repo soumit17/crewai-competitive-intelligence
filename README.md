@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M2 (tools, URL-allowlist hook, three parallel Signal Scouts) done.
+**Status:** M3 (ShortUpdateCrew: JSON-first, sequential, guardrails, verbatim render) done.
 
 ## Setup
 
@@ -140,6 +140,70 @@ gate, ends the run.)
 | Material signals found | **4/4** | 3/4: missed ShelfMitra's Series B |
 | Why | | `Crew.kickoff_for_each` copies the crew per input, and `Agent.copy()` drops `mcps` (crewai 1.15.33): no market tools |
 | Code | Agent + prompt | Agent + Task + Crew + `{placeholders}` |
+
+## M3: ShortUpdateCrew (the routine-week brief)
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run compintel brief --week 1` | ~$0.007, ~45 s | Reads `runs/scout/week-1.agents.json` (run `compintel scout --week 1` first). Prints the brief and every guardrail verdict |
+| `uv run compintel brief --week 3` | ~$0.006 | The rumor week: watch `low_credibility_only_discounted` reject a draft that uses the 0.2-credibility rumor |
+| `uv run compintel brief --week 1 --final` | ~$0.05 | Brief Writer on Sonnet 5.5, analyst stays on Haiku |
+| `uv run python scripts/backstory_experiment.py` | ~$0.003 | Same task with an 18-word vs 193-word backstory: tokens, cost, judgement |
+
+Outputs: `briefs/drafts/week-NN.json` (the approved Brief) and `briefs/drafts/week-NN.md` (rendered).
+
+### The crew is JSON
+
+```
+src/compintel/crews/short_update/
+├── crew.jsonc               # process, tasks, guardrails, callbacks, output_file
+├── agents/market_analyst.jsonc
+├── agents/brief_writer.jsonc
+├── crew_refs.py             # the only Python the JSON may reference ({"python": "crew_refs.X"})
+└── __init__.py              # load_crew() + run(): supplies inputs, nothing about the crew's shape
+```
+
+crewai's JSON loader only imports `{"python": ...}` references from files under the crew file's folder, so
+`crew_refs.py` re-exports exactly what the JSON may use (models, guardrails, callbacks, the LLMs). Agent LLMs
+are `{"python": "crew_refs.analyst"}`, built on access by `compintel/llms.py` → `config.make_llm`, so models and
+token budgets still live in Python.
+
+### What one run does (3 tasks, sequential)
+
+1. **`classify_signals`** (Market Analyst, no tools): this week's signals → `ThreatAssessments` (one per
+   competitor). With no tools, crewai sends the schema natively: one LLM call.
+2. **`write_short_brief`** (Brief Writer): `context=[classify_signals]` + the signals → a `Brief`, then three
+   guardrails (below). On a failure, crewai sends the guardrail's message back to the writer and re-runs the task,
+   up to `guardrail_max_retries: 2`. The task `callback` saves the approved Brief to `briefs/drafts/week-NN.json`.
+3. **`render_draft`** (Brief Writer): calls `render_brief(week)`, a `result_as_answer` tool. Its markdown becomes
+   the task output verbatim (no LLM rewrite), and `output_file` saves it.
+
+Typical cost: 4 LLM calls when the first draft passes, plus 2 per guardrail retry.
+
+### Guardrails, in the order they run
+
+| # | Guardrail | Kind | Checks |
+|---|---|---|---|
+| 1 | "Judge only from the brief's own text…" | string (LLM) | A claim the brief itself calls rumored/unverified is never stated as fact |
+| 2 | `every_claim_cites_signal` | function | Every TL;DR item and discounted claim cites an id; ids are real (this run's signals, registered by a `before_kickoff` callback) |
+| 3 | `low_credibility_only_discounted` | function | Signals below 0.5 credibility appear in `discounted_claims` and nowhere else |
+
+Order matters. crewai retries each guardrail until it passes, and only that guardrail re-checks the retry. So the
+deterministic checks go last, where they get the final word.
+
+Why credibility is a function and not the spec's string guardrail: an LLM guardrail sees only the task output,
+and the credibility scores are in the inputs. Live, the string version failed a week-1 brief that had *no*
+low-credibility signal, twice, and its feedback pushed the writer to discount a 0.9-credibility fact.
+
+### Backstory length (live, week-2 signals, classify task)
+
+| Backstory | Input tokens/call | First call | Cached repeat | Threat levels vs ground truth |
+|---|---|---|---|---|
+| 18 words (the JSON one) | 4,250 | $0.00092 | $0.00044 | 2/3 |
+| 193 words | 4,593 (+8%) | $0.00102 (+11%) | $0.00046 | 2/3, identical levels |
+
+The long backstory is paid for on every uncached call and changed nothing. Prompt caching hides most of the
+cost on repeats. Both variants under-rate ShelfMitra in week 2. Week 2 goes to the deep dive in M4, not this crew.
 
 ## Later milestones' commands
 

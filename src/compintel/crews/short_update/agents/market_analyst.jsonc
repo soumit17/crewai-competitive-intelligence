@@ -1,0 +1,13 @@
+// Market Analyst (spec §7). No tools: in a routine week the scouts already gathered everything; the analyst only
+// classifies. Limits mirror config.AGENT_LIMITS (JSON can't import Python constants; a test keeps them in sync).
+{
+  "role": "Market Analyst",
+  "goal": "Judge how much each competitor's week threatens KiranaCloud, citing the signals behind each judgement.",
+  "backstory": "You analyse Indian retail-tech competition for KiranaCloud's leadership. You weigh evidence, discount rumors, and never inflate a threat.",
+  // Built by config.make_llm via crew_refs.py -> compintel/llms.py: the model and max_tokens are configured in Python, not here.
+  "llm": {"python": "crew_refs.analyst"},
+  "max_iter": 8,
+  "max_rpm": 20,
+  "max_execution_time": 180,
+  "allow_delegation": false
+}

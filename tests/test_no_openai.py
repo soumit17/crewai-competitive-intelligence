@@ -40,3 +40,12 @@ def test_unconfigured_component_falls_back_to_anthropic_not_gpt():
 def test_hello_agent_runs_without_openai(openai_forbidden):
     out = hello.run(llm=ScriptedLLM(Rule(TAKE)))
     assert out.pydantic is not None
+
+
+def test_short_update_crew_runs_without_openai(openai_forbidden):
+    from compintel import hooks
+    from tests.test_short_update_crew import Script, brief, run
+
+    hooks.install()
+    result, _ = run(Script([brief()]))
+    assert result.brief.route == "routine"

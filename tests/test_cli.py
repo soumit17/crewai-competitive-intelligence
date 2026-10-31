@@ -71,3 +71,33 @@ def test_scout_command_explains_a_missing_fake_web(monkeypatch):
     result = runner.invoke(app, ["scout", "--week", "1"])
     assert result.exit_code != 0
     assert "serve_fakeweb.py" in result.output
+
+
+def test_brief_command_runs_the_crew_on_saved_scout_reports(tmp_path, monkeypatch):
+    import json as _json
+
+    from compintel import config
+    from compintel.crews import short_update
+    from tests.test_short_update_crew import REPORTS, Script, brief
+
+    scout_file = tmp_path / "runs" / "scout" / "week-3.agents.json"
+    scout_file.parent.mkdir(parents=True)
+    scout_file.write_text(_json.dumps({c: r.model_dump() for c, r in REPORTS.items()}))
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)  # the CLI chdirs here before running the crew
+    real_run = short_update.run
+    script = Script([brief(tl_dr=["uncited"]), brief()])  # one function-guardrail retry
+    monkeypatch.setattr(
+        short_update, "run", lambda w, r, final=False: real_run(w, r, final, fake=ScriptedLLM(Rule(script)))
+    )
+
+    result = runner.invoke(app, ["brief", "--week", "3"])
+    assert result.exit_code == 0, result.output
+    assert "# Week 03: BahiBook eyes GST e-invoicing" in result.output
+    assert "every_claim_cites_signal' attempt 1: FAIL → retry" in result.output
+    assert "every_claim_cites_signal' attempt 2: pass" in result.output
+    assert (tmp_path / "briefs" / "drafts" / "week-03.md").exists()
+
+
+def test_brief_command_needs_scout_reports_first():
+    result = runner.invoke(app, ["brief", "--week", "1"])
+    assert result.exit_code != 0 and "compintel scout --week 1" in result.output

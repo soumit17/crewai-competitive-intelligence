@@ -1,4 +1,4 @@
-"""`@on` execution hooks (spec §12.1). M0: budget gate. M2: URL allowlist. M8 adds the rest.
+"""`@on` execution hooks (spec §12.1). M0: budget gate. M2: URL allowlist. M3: file allowlist. M8: the rest.
 
 Hooks *control* (listeners only observe). Only `HookAborted` stops a run: any other exception raised in
 a hook is swallowed (fail-open), so a buggy hook can't crash a run but also can't protect it.
@@ -6,6 +6,7 @@ a hook is swallowed (fail-open), so a buggy hook can't crash a run but also can'
 
 from __future__ import annotations
 
+from pathlib import Path
 from urllib.parse import urlparse
 
 from crewai.events.event_bus import crewai_event_bus
@@ -17,6 +18,8 @@ from compintel.cost import get_ledger
 
 # crewai sanitizes tool names before matching `tools=` filters: "Read website content" -> this.
 SCRAPE_TOOL = "read_website_content"
+FILE_READ_TOOL = "read_a_files_content"  # crewai-tools' FileReadTool ("Read a file's content")
+READABLE_DIR = Path("briefs")  # cwd-relative, like the briefs the crews write
 
 
 def budget_gate(ctx) -> None:
@@ -54,6 +57,22 @@ def url_allowlist(ctx) -> None:
         raise HookAborted(reason=f"URL not allowed: {raw!r} (only {allowed.netloc})", source="url-allowlist")
 
 
+def file_read_allowlist(ctx) -> None:
+    """The file policy for LLM-chosen paths: only files under briefs/.
+
+    Same story as url_allowlist: the escape hatch that lets the scraper reach 127.0.0.1 also lifts
+    FileReadTool's own base_dir containment, so this hook takes its place. Paths are resolved first, so
+    "briefs/../.env" and symlinks out of briefs/ are caught.
+    """
+    raw = str((ctx.tool_input or {}).get("file_path") or "")
+    allowed = READABLE_DIR.resolve()
+    target = Path(raw).resolve() if raw else None
+    if target is None or not target.is_relative_to(allowed):
+        raise HookAborted(
+            reason=f"File not allowed: {raw!r} (only under {READABLE_DIR}/)", source="file-allowlist"
+        )
+
+
 def is_installed(hook) -> bool:
     """True if `hook` is registered globally (`@on` with filters registers `hook._registered_hook`)."""
     registered = [h for point in InterceptionPoint for h in get_hooks(point)]
@@ -65,3 +84,4 @@ def install() -> None:
     on(InterceptionPoint.PRE_MODEL_CALL)(budget_gate)
     # tools= scopes the hook: it only runs for the scrape tool, so other tool calls skip it entirely.
     on(InterceptionPoint.PRE_TOOL_CALL, tools=[SCRAPE_TOOL])(url_allowlist)
+    on(InterceptionPoint.PRE_TOOL_CALL, tools=[FILE_READ_TOOL])(file_read_allowlist)
