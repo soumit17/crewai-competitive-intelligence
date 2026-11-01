@@ -1,0 +1,72 @@
+# DeepDiveCrew tasks (spec §8.3). `agent` is the intended specialist; in the hierarchical variants the crew
+# clears it so the Head of Strategy chooses whom to delegate to (crewai otherwise lets the manager delegate
+# only to the task's own agent). Output models, guardrails and the condition are set in deep_dive_crew.py.
+
+pricing_analysis:
+  agent: pricing_analyst
+  async_execution: true
+  description: >
+    Week {week}. Analyse this week's competitor pricing moves against KiranaCloud's pricing (Dukaan ₹799/month,
+    floor ₹649; see your knowledge). Use pricing_parse(company, week) for exact numbers.
+    Signals (JSON): {signals}
+  expected_output: >
+    Up to 6 bullet points: each competitor's price move with exact figures, the gap to Dukaan in rupees and
+    percent, and what it means for us. Cite signal ids in square brackets.
+
+product_overlap:
+  agent: product_analyst
+  async_execution: true
+  description: >
+    Week {week}. Find where this week's competitor product moves overlap with KiranaCloud's 2027 roadmap
+    (GST e-invoicing Q1, Khata on UPI Q2, Bengali voice billing Q3; see your knowledge). Use
+    changelog_diff(company, week) to confirm what shipped. Signals (JSON): {signals}
+  expected_output: >
+    Up to 6 bullet points: each overlap, which roadmap item it hits, and how far ahead the competitor is.
+    Cite signal ids in square brackets.
+
+market_threats:
+  agent: market_analyst
+  async_execution: true
+  description: >
+    Week {week}. Assess how much each competitor threatens KiranaCloud this week. Signals (JSON): {signals}
+    Rules: exactly one assessment each for StockSathi, ShelfMitra and BahiBook. "high" only when a new,
+    credible signal has high impact on us; signals with credibility below 0.5 are unverified and cannot raise
+    a threat. Cite ids in the rationale in square brackets and list them in signal_ids.
+    Return only JSON matching this schema, no prose and no code fences: {threats_schema}
+  expected_output: Three threat assessments, one per competitor.
+
+synthesis:
+  agent: strategist
+  context: [pricing_analysis, product_overlap, market_threats]
+  description: >
+    Week {week}. Combine the pricing, product and threat analyses in your context into one threat picture
+    for KiranaCloud: the final threat level per competitor, up to 5 key findings, and 1 to 3 recommendations
+    with an owner (Product, Sales, Marketing or Leadership) and urgency. Cite signal ids in square brackets.
+    Return only JSON matching this schema, no prose and no code fences: {synthesis_schema}
+  expected_output: The synthesis.
+
+escalation_memo:
+  agent: strategist
+  context: [synthesis]
+  description: >
+    Week {week}. At least one competitor is a high threat. Write a short escalation memo to KiranaCloud's
+    leadership: what happened, why it is urgent for our Kolkata business, and the decision needed this week.
+    Cite signal ids in square brackets.
+  expected_output: A memo of at most 150 words in markdown, with a title line and three short sections.
+
+write_brief:
+  agent: brief_writer
+  context: [synthesis, escalation_memo]
+  description: >
+    Write the weekly brief for week {week} from the synthesis (and escalation memo, if any) in your context
+    and these signals (JSON): {signals}
+    Previous brief: {previous_brief}. If that is a file path, read it with the file tool and say in
+    since_last_week what changed; if it is 'none', since_last_week is ["First brief: no earlier week to compare."].
+    Rules: route is "material". Be brief: the whole brief reads in two minutes. One-line headline. tl_dr has at
+    most 5 items of at most 30 words, the biggest threat to our Kolkata market first, every item citing signal ids
+    in square brackets. threats repeats the synthesis threat levels, each rationale at most two sentences.
+    1 to 3 recommendations from the synthesis, each with signal_ids. watchlist holds at most 3 weak or early
+    signals. discounted_claims lists every signal with credibility below 0.5 as unverified, citing its id; never
+    state such a claim as fact anywhere else. Cite only ids from the signals above.
+    Return only the Brief as one JSON object matching this schema, no prose and no code fences: {brief_schema}
+  expected_output: The Brief.

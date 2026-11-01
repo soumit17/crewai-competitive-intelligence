@@ -1,4 +1,5 @@
-"""Event listeners on crewai's event bus (spec §12.3). M0: cost ledger. M3: guardrail log. M8: live console.
+"""Event listeners on crewai's event bus (spec §12.3). M0: cost ledger. M3: guardrail log. M4: delegation log.
+M8: live console.
 
 Listeners *observe*; they can't stop a run (that's what hooks are for, see hooks.py). crewai runs sync
 handlers on a thread pool, so callers that read the ledger right after a kickoff must first call
@@ -7,11 +8,13 @@ handlers on a thread pool, so callers that read the ledger right after a kickoff
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from crewai.events import BaseEventListener, LLMCallCompletedEvent
 from crewai.events.event_bus import CrewAIEventsBus
 from crewai.events.types.llm_guardrail_events import LLMGuardrailCompletedEvent
+from crewai.events.types.tool_usage_events import ToolUsageStartedEvent
 from rich.console import Console
 
 from compintel.cost import get_ledger
@@ -53,6 +56,38 @@ class GuardrailLog(BaseEventListener):
                     "attempt": event.retry_count + 1,
                     "passed": event.success,
                     "error": event.error,
+                }
+            )
+
+
+DELEGATION_TOOLS = {"delegate_work_to_coworker": "delegate", "ask_question_to_coworker": "ask"}
+
+
+class DelegationLog(BaseEventListener):
+    """Every delegation a manager makes: crewai's delegation tools are ordinary tool calls on the bus."""
+
+    def __init__(self) -> None:
+        self.entries: list[dict[str, Any]] = []
+        super().__init__()
+
+    def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
+        @crewai_event_bus.on(ToolUsageStartedEvent)
+        def on_tool(source: Any, event: ToolUsageStartedEvent) -> None:
+            kind = DELEGATION_TOOLS.get(event.tool_name.lower().replace(" ", "_"))
+            if kind is None:
+                return
+            args = event.tool_args
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            self.entries.append(
+                {
+                    "kind": kind,
+                    "by": event.agent_role,
+                    "coworker": args.get("coworker"),
+                    "task": event.task_name,
                 }
             )
 

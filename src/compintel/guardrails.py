@@ -6,7 +6,8 @@ signal ids). A string guardrail (in crew.jsonc) is an LLM call that judges the o
 only sees the output, so it suits judgement calls ("is this rumor stated as fact?"), not lookups.
 """
 
-from __future__ import annotations
+# No `from __future__ import annotations` here: crewai validates a single `guardrail=`'s return annotation
+# with inspect.signature (unevaluated), and would see the string 'tuple[bool, Any]' instead of the type.
 
 import json
 import re
@@ -15,26 +16,42 @@ from typing import Any
 from crewai import TaskOutput
 from pydantic import ValidationError
 
-from compintel.models import Brief
+from compintel.models import Brief, Synthesis, ThreatAssessments
+from compintel.world.story import BY_NAME
 
+COMPANIES = tuple(BY_NAME)
 SIGNAL_ID = re.compile(r"\b(StockSathi|ShelfMitra|BahiBook)-(\d+)-(\d+)\b")
 MAX_BRIEF_WORDS = 600
+# The LLM-checked rule (string guardrail), worded to be decidable from the brief alone (see M3). Same text as
+# in short_update/crew.jsonc (JSON can't import it; a test keeps them equal).
+NO_RUMOR_AS_FACT = (
+    "Judge only from the brief's own text. A claim the brief itself calls unverified, rumored, unconfirmed "
+    "or speculative must appear only under discounted_claims and must not be stated as fact anywhere else. "
+    "Do not ask for credibility scores; they are checked separately."
+)
 
 # Signal ids given to the current crew run, registered by the crew's before_kickoff callback. Module-level
 # because a guardrail only receives the TaskOutput; one crew run at a time in this project.
 _known_ids: set[str] = set()
 _low_credibility: set[str] = set()  # ids below LOW_CREDIBILITY: may only appear under discounted_claims
+_signals: dict[str, dict[str, Any]] = {}  # id -> the compact signal (impact, credibility, novelty...)
 LOW_CREDIBILITY = 0.5
 
 
-def register_signals(inputs: dict[str, Any]) -> dict[str, Any]:
-    """crew before_kickoff callback: remember this run's signal ids (and which are low-credibility) so the
-    guardrails can check the brief against the real inputs."""
-    signals = json.loads(inputs.get("signals") or "[]")
+def reset() -> None:
     _known_ids.clear()
-    _known_ids.update(s["id"] for s in signals)
     _low_credibility.clear()
-    _low_credibility.update(s["id"] for s in signals if s.get("credibility", 1.0) < LOW_CREDIBILITY)
+    _signals.clear()
+
+
+def register_signals(inputs: dict[str, Any]) -> dict[str, Any]:
+    """crew before_kickoff callback: remember this run's signals (ids, credibility, impact) so the guardrails
+    can check outputs against the real inputs."""
+    signals = json.loads(inputs.get("signals") or "[]")
+    reset()
+    _signals.update({s["id"]: s for s in signals})
+    _known_ids.update(_signals)
+    _low_credibility.update(sid for sid, s in _signals.items() if s.get("credibility", 1.0) < LOW_CREDIBILITY)
     return inputs
 
 
@@ -144,3 +161,58 @@ def brief_length_ok(task_output: TaskOutput) -> tuple[bool, Any]:
     if words > MAX_BRIEF_WORDS:
         return False, f"The brief renders to {words} words; cut it to at most {MAX_BRIEF_WORDS}."
     return True, task_output
+
+
+def threat_levels_consistent(task_output: TaskOutput) -> tuple[bool, Any]:
+    """market_threats (spec §12.2): one assessment per competitor, and each level matches its evidence.
+
+    "high" needs at least one cited signal with high impact and credibility >= 0.5; "low" may not rest on a
+    new, credible, high-impact signal. Levels are judged against the registered signals, not the model's
+    words.
+    """
+    try:
+        raw = task_output.raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+        threats = (
+            task_output.pydantic
+            if isinstance(task_output.pydantic, ThreatAssessments)
+            else ThreatAssessments.model_validate_json(raw)
+        )
+    except ValidationError as e:
+        return False, f"The output is not a valid ThreatAssessments JSON object: {e.errors()[:3]}"
+    problems = []
+    companies = sorted(t.company for t in threats.threats)
+    if companies != sorted(COMPANIES):
+        problems.append(f"need exactly one assessment each for {', '.join(COMPANIES)}; got {companies}")
+    for t in threats.threats:
+        unknown = [sid for sid in t.signal_ids if _signals and sid not in _signals]
+        if unknown:
+            problems.append(f"{t.company}: unknown signal ids {unknown}")
+        cited = [_signals[sid] for sid in t.signal_ids if sid in _signals]
+        strong = [
+            s for s in cited if s.get("impact") == "high" and s.get("credibility", 0) >= LOW_CREDIBILITY
+        ]
+        if t.threat == "high" and _signals and not strong:
+            problems.append(f"{t.company} is 'high' but cites no credible high-impact signal")
+        if t.threat == "low" and any(s.get("novelty") == "new" for s in strong):
+            problems.append(f"{t.company} is 'low' but cites a new, credible, high-impact signal")
+    if problems:
+        return False, "Fix the threat assessments and return them all again: " + "; ".join(problems)
+    task_output.pydantic = threats
+    task_output.raw = threats.model_dump_json()
+    return True, task_output
+
+
+def any_high_threat(output: TaskOutput) -> bool:
+    """ConditionalTask condition for the escalation memo: run it only if the synthesis rates any threat high.
+
+    A module-level function, not a lambda: crewai checkpoints store a task's condition by reference, and
+    lambdas/closures can't be restored (spec §2.2, used from M5).
+    """
+    raw = output.raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+    try:
+        synthesis = (
+            output.pydantic if isinstance(output.pydantic, Synthesis) else Synthesis.model_validate_json(raw)
+        )
+    except ValidationError:
+        return False
+    return any(t.threat == "high" for t in synthesis.threats)

@@ -82,3 +82,5 @@ ignore = ["B008"]  # typer.Option(...) in defaults is typer's idiom
 # Same for the fixture tables (briefs, threat assessments) in these tests.
 "tests/test_guardrails.py" = ["E501"]
 "tests/test_short_update_crew.py" = ["E501"]
+"tests/deep_dive_script.py" = ["E501"]
+"tests/test_deep_dive_crew.py" = ["E501"]

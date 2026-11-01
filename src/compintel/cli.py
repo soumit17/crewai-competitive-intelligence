@@ -1,4 +1,4 @@
-"""`compintel` command line. M0: hello, costs. M2: scout. M3: brief."""
+"""`compintel` command line. M0: hello, costs. M2: scout. M3: brief. M4: deepdive."""
 
 from __future__ import annotations
 
@@ -131,14 +131,10 @@ def brief(
     import os
 
     from compintel.config import PROJECT_ROOT
-    from compintel.models import SignalReport
 
     if not get_settings().anthropic_api_key:
         raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
-    scout_file = get_settings().p3_runs_dir / "scout" / f"week-{week}.agents.json"
-    if not scout_file.exists():
-        raise typer.BadParameter(f"{scout_file} not found; run `compintel scout --week {week}` first")
-    reports = {c: SignalReport.model_validate(r) for c, r in json.loads(scout_file.read_text()).items()}
+    reports = _load_scout_reports(week)
     _bootstrap()
     # crewai's output_file is cwd-relative (inputs can't make it absolute); like `crewai run`, use the root.
     os.chdir(PROJECT_ROOT)
@@ -166,6 +162,76 @@ def brief(
     console.print(
         f"[yellow]{_ledger_rows() - rows_before} LLM calls, {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}"
         f"[/yellow]   [yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
+    )
+
+
+def _load_scout_reports(week: int) -> dict:
+    from compintel.models import SignalReport
+
+    scout_file = get_settings().p3_runs_dir / "scout" / f"week-{week}.agents.json"
+    if not scout_file.exists():
+        raise typer.BadParameter(f"{scout_file} not found; run `compintel scout --week {week}` first")
+    return {c: SignalReport.model_validate(r) for c, r in json.loads(scout_file.read_text()).items()}
+
+
+@app.command()
+def deepdive(
+    week: int = typer.Option(
+        2, "--week", min=1, max=3, help="Week to deep-dive (week 2 is the material one)."
+    ),
+    variant: str = typer.Option(
+        "manager_agent", "--variant", help="sequential | manager_llm | manager_agent"
+    ),
+    final: bool = typer.Option(False, "--final", help="Brief Writer on MODEL_FINAL (Sonnet)."),
+    verbose: bool = typer.Option(False, "--verbose", help="crewai's agent verbose output."),
+) -> None:
+    """Live: run DeepDiveCrew on saved scout reports. Haiku: a few cents (see README for per-variant cost)."""
+    import os
+
+    from compintel.config import PROJECT_ROOT
+    from compintel.crews.deep_dive import VARIANTS
+
+    if variant not in VARIANTS:
+        raise typer.BadParameter(f"--variant must be one of {', '.join(VARIANTS)}")
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    reports = _load_scout_reports(week)
+    _require_fakeweb()  # the pricing and product analysts call pricing_parse / changelog_diff
+    _bootstrap()
+    os.chdir(PROJECT_ROOT)  # crewai's output paths are cwd-relative (see `brief`)
+    import time
+
+    from crewai.events.event_bus import crewai_event_bus
+
+    from compintel.cost import get_ledger
+    from compintel.crews import deep_dive
+    from compintel.listeners import DelegationLog, GuardrailLog
+    from compintel.tools.render_brief import render_markdown
+    from compintel.world.ground_truth import check_brief
+
+    guard_log, deleg_log = GuardrailLog(), DelegationLog()
+    ledger = get_ledger()
+    before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
+    result = deep_dive.run(week, reports, variant=variant, final=final, verbose=verbose)
+    elapsed = time.perf_counter() - started
+    crewai_event_bus.flush()
+
+    console.print(render_markdown(result.brief))
+    console.print(
+        "[bold]Escalation memo[/bold]: "
+        + ("skipped (no high threat)" if result.escalation_memo is None else "")
+    )
+    if result.escalation_memo:
+        console.print(result.escalation_memo)
+    for e in guard_log.entries:
+        mark = "[green]pass[/green]" if e["passed"] else "[red]FAIL → retry[/red]"
+        console.print(f"guardrail {e['type']:8} {e['name'][:50]!r} attempt {e['attempt']}: {mark}")
+    for e in deleg_log.entries:
+        console.print(f"delegation: {e['by']} → {e['kind']} → {e['coworker']}")
+    console.print(f"ground truth: {check_brief(result.brief, reports, week)}")
+    console.print(
+        f"[yellow]{variant}: {_ledger_rows() - rows_before} LLM calls, {elapsed:.1f}s, "
+        f"${ledger.spent_usd - before:.6f}[/yellow]   [yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
     )
 
 

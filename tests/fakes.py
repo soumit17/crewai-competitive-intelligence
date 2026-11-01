@@ -17,11 +17,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 from anthropic.types import ToolUseBlock
+from chromadb.api.types import EmbeddingFunction as ChromaEmbeddingFunction
 from crewai import BaseLLM
 from crewai.events.types.llm_events import LLMCallType
 from crewai.hooks.dispatch import HookAborted
 from crewai.llms.base_llm import LLMCallBlockedError, llm_call_context
+from crewai.rag.core.types import Documents, Embeddings
+from crewai.rag.embeddings.providers.custom.embedding_callable import CustomEmbeddingFunction
 from pydantic import BaseModel, PrivateAttr
 
 DEFAULT_USAGE = {
@@ -156,17 +160,31 @@ def tool_results(messages: list[Any]) -> str:
     return json.dumps([m for m in messages if isinstance(m, dict) and m.get("role") == "tool"], default=str)
 
 
-class FakeEmbedder:
-    """Deterministic hash vectors in chromadb's EmbeddingFunction shape: texts -> unit vectors.
+class FakeEmbedder(CustomEmbeddingFunction, ChromaEmbeddingFunction):
+    """Deterministic hash vectors: same text → same vector; different texts → near-orthogonal.
 
-    Same text → same vector; different texts → near-orthogonal. Used for Memory/Knowledge from M4 on.
+    crewai's "custom" embedder provider takes the *class* and instantiates it with no arguments. Two
+    validators check it: KnowledgeStorage against chromadb's EmbeddingFunction, the provider against crewai's
+    CustomEmbeddingFunction (not a subclass of chromadb's in 1.15.33), so it subclasses both.
+    conftest makes it every test's embedder, so no test can trigger the real ONNX model download.
     """
 
     def __init__(self, dim: int = 384) -> None:
         self.dim = dim
 
-    def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002 - chromadb's parameter name
-        return [self._embed(t) for t in input]
+    def __call__(self, input: Documents) -> Embeddings:  # noqa: A002 - chromadb's parameter name
+        return [np.array(self._embed(t), dtype=np.float32) for t in input]
+
+    @staticmethod
+    def name() -> str:
+        return "compintel-fake"
+
+    def get_config(self) -> dict[str, Any]:
+        return {"dim": self.dim}
+
+    @staticmethod
+    def build_from_config(config: dict[str, Any]) -> FakeEmbedder:
+        return FakeEmbedder(**config)
 
     def _embed(self, text: str) -> list[float]:
         vec = [0.0] * self.dim
@@ -175,6 +193,9 @@ class FakeEmbedder:
             vec[h % self.dim] += 1.0 if (h >> 63) & 1 else -1.0
         norm = math.sqrt(sum(v * v for v in vec)) or 1.0
         return [v / norm for v in vec]
+
+
+FAKE_EMBEDDER_SPEC: dict[str, Any] = {"provider": "custom", "config": {"embedding_callable": FakeEmbedder}}
 
 
 def text_reply(answer: str) -> Callable[..., str]:

@@ -6,6 +6,7 @@ Network is blocked by pytest-socket except 127.0.0.1 (see `addopts` in pyproject
 from __future__ import annotations
 
 import os
+import tempfile
 
 # Set before any crewai / compintel import: crewai reads these on import, Settings on first use.
 os.environ["ANTHROPIC_API_KEY"] = "sk-test-dummy"
@@ -19,6 +20,12 @@ os.environ["CREWAI_TOOLS_ALLOW_UNSAFE_PATHS"] = (
     "true"  # as config.apply_env() does; url_allowlist polices URLs
 )
 os.environ.pop("P3_RUNS_DIR", None)
+# crewai's chroma store path is a module constant computed on first import (rag/chromadb/constants.py), from
+# CREWAI_STORAGE_DIR (an app *name*, joined under XDG_DATA_HOME) or else the cwd's name: set both before
+# anything imports crewai, or tests write into the developer's real ~/.local/share/<project> store.
+_TEST_DATA_HOME = tempfile.mkdtemp(prefix="compintel-tests-")
+os.environ["XDG_DATA_HOME"] = _TEST_DATA_HOME
+os.environ["CREWAI_STORAGE_DIR"] = "compintel-tests"
 
 import pytest  # noqa: E402
 from crewai.events.event_bus import crewai_event_bus  # noqa: E402
@@ -34,16 +41,17 @@ def _isolated(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     from compintel import guardrails
 
-    guardrails._known_ids.clear()
-    guardrails._low_credibility.clear()
+    guardrails.reset()
     monkeypatch.setenv("P3_RUNS_DIR", str(tmp_path / "runs"))
-    # crewai's own local stores (memory, knowledge, flow persistence default dir) go to tmp too.
-    monkeypatch.setenv("CREWAI_STORAGE_DIR", str(tmp_path / "crewai_storage"))
     get_settings.cache_clear()
     get_ledger.cache_clear()
     # Global hooks and bus handlers outlive a test unless cleared (spec §2.2 gotcha).
     clear_all_hooks()
-    with crewai_event_bus.scoped_handlers():
+    from compintel.config import embedder_scope
+    from tests.fakes import FAKE_EMBEDDER_SPEC
+
+    # Every test embeds with the hash fake: the real ONNX embedder would download a model (network blocked).
+    with crewai_event_bus.scoped_handlers(), embedder_scope(FAKE_EMBEDDER_SPEC):
         yield
         crewai_event_bus.flush()
     clear_all_hooks()
@@ -78,6 +86,7 @@ def _fakeweb_server(world_dir):
 def world(world_dir, _fakeweb_server, monkeypatch):
     """Point tools, MCP server and allowlist at the test world and its fake web server."""
     monkeypatch.setenv("P3_DATA_DIR", str(world_dir / "data"))
+    monkeypatch.setenv("P3_KNOWLEDGE_DIR", str(world_dir / "knowledge"))
     monkeypatch.setenv("FAKEWEB_URL", _fakeweb_server)
     get_settings.cache_clear()
     return _fakeweb_server

@@ -105,3 +105,75 @@ def test_low_credibility_signals_belong_only_in_discounted_claims():
 def test_no_low_credibility_signals_means_nothing_to_discount():
     guardrails.register_signals({"signals": json.dumps([{"id": "StockSathi-2-1", "credibility": 0.9}])})
     assert guardrails.low_credibility_only_discounted(out(GOOD))[0]
+
+
+def _register(*signals):
+    guardrails.register_signals({"signals": json.dumps(list(signals))})
+
+
+THREATS = {"threats": [
+    {"company": "StockSathi", "threat": "high", "rationale": "x", "signal_ids": ["StockSathi-2-1"]},
+    {"company": "ShelfMitra", "threat": "medium", "rationale": "x", "signal_ids": ["ShelfMitra-2-1"]},
+    {"company": "BahiBook", "threat": "low", "rationale": "x", "signal_ids": ["BahiBook-2-1"]},
+]}  # fmt: skip
+
+
+def test_threat_levels_must_match_their_evidence():
+    _register(
+        {"id": "StockSathi-2-1", "impact": "high", "credibility": 0.9, "novelty": "new"},
+        {"id": "ShelfMitra-2-1", "impact": "high", "credibility": 0.9, "novelty": "new"},
+        {"id": "BahiBook-2-1", "impact": "none", "credibility": 0.9, "novelty": "new"},
+    )
+    ok, value = guardrails.threat_levels_consistent(out(THREATS))
+    assert ok and value.pydantic.threats[0].threat == "high"
+
+    weak_high = json.loads(json.dumps(THREATS))
+    weak_high["threats"][2]["threat"] = "high"  # BahiBook "high" on a bug fix
+    ok, error = guardrails.threat_levels_consistent(out(weak_high))
+    assert not ok and "BahiBook is 'high' but cites no credible high-impact signal" in error
+
+    ignored = json.loads(json.dumps(THREATS))
+    ignored["threats"][1]["threat"] = "low"  # ShelfMitra "low" despite a new high-impact signal
+    ok, error = guardrails.threat_levels_consistent(out(ignored))
+    assert not ok and "ShelfMitra is 'low' but cites a new, credible, high-impact signal" in error
+
+
+def test_threat_assessments_cover_each_competitor_once():
+    two = {"threats": THREATS["threats"][:2]}
+    ok, error = guardrails.threat_levels_consistent(out(two))
+    assert not ok and "exactly one assessment each" in error
+
+
+def test_rumor_cannot_make_a_threat_high():
+    _register({"id": "StockSathi-3-7", "impact": "high", "credibility": 0.2, "novelty": "new"})
+    rumor = {
+        "threats": [{**THREATS["threats"][0], "signal_ids": ["StockSathi-3-7"]}, *THREATS["threats"][1:]]
+    }
+    _register(
+        {"id": "StockSathi-3-7", "impact": "high", "credibility": 0.2, "novelty": "new"},
+        {"id": "ShelfMitra-2-1", "impact": "medium", "credibility": 0.9, "novelty": "new"},
+        {"id": "BahiBook-2-1", "impact": "none", "credibility": 0.9, "novelty": "new"},
+    )
+    ok, error = guardrails.threat_levels_consistent(out(rumor))
+    assert not ok and "StockSathi is 'high'" in error
+
+
+def test_escalation_condition_reads_the_synthesis():
+    def synth(level):
+        return out(
+            {
+                "threats": [{**THREATS["threats"][1], "threat": level}],
+                "key_findings": [],
+                "recommendations": [],
+            }
+        )
+
+    assert guardrails.any_high_threat(synth("high"))
+    assert not guardrails.any_high_threat(synth("medium"))
+    assert not guardrails.any_high_threat(out("not json"))
+
+
+def test_the_rule_text_is_the_same_in_both_crews():
+    from compintel.crews import short_update
+
+    assert json.dumps(guardrails.NO_RUMOR_AS_FACT)[1:-1] in short_update.CREW_FILE.read_text()

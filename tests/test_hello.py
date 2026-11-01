@@ -41,5 +41,8 @@ def test_make_llm_uses_the_native_anthropic_provider():
     assert dev.temperature is None  # Claude 5.5 models reject non-default sampling values
 
 
-def test_embedder_is_local():
-    assert embedder_config()["provider"] == "onnx"
+def test_embedder_is_local(monkeypatch):
+    from compintel import config
+
+    monkeypatch.setattr(config, "_embedder_override", None)  # the real config, not conftest's test fake
+    assert embedder_config() == {"provider": "onnx", "config": {}}

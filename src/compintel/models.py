@@ -1,4 +1,4 @@
-"""Domain models (spec §5). M2: what a Scout returns. M3: threats, recommendations, the Brief."""
+"""Domain models (spec §5). M2: Scout reports. M3: threats, recommendations, the Brief. M4: Synthesis."""
 
 from __future__ import annotations
 
@@ -73,3 +73,11 @@ class Brief(BaseModel):
         default_factory=list, description="Low-credibility claims, each citing its signal id."
     )
     route: Literal["routine", "material"]
+
+
+class Synthesis(BaseModel):
+    """The deep dive's strategist output: the threat picture across the three analyses, with actions."""
+
+    threats: list[ThreatAssessment]
+    key_findings: list[str] = Field(description="At most 5, each citing signal ids in [brackets].")
+    recommendations: list[Recommendation]

@@ -220,6 +220,59 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   function caught the rumor used as fact, retry passed); threat levels match ground truth 3/3; 429 words.
 - **Backstory experiment:** +8% input tokens for 193 vs 18 words, identical judgements (README table).
 
+## M4 decisions
+
+36. **Three variants from one @CrewBase class** (`variant=` constructor argument): `sequential`, `manager_llm`,
+    `manager_agent` (default). The Head of Strategy is not an `@agent` (crewai rejects a manager inside `agents`).
+37. **Hierarchical variants clear every task's `agent`.** With a task agent set, crewai's `_update_manager_tools` lets
+    the manager delegate only to that agent; the spec's "manager may reassign" needs the agent unset.
+    `intended_agents` keeps the YAML intent for the comparison.
+38. **No `async_execution` in the hierarchical variants.** Every hierarchical task runs on the manager's one executor;
+    concurrent use raised `RuntimeError: Executor is already running. Cannot invoke the same executor instance
+    concurrently` (crewai 1.15.33), and with knowledge sources on, the same collision ended the process silently
+    (exit 0, no exception). Parallel analyses only in `sequential`.
+39. **The brief's LLM rule is an explicit `LLMGuardrail(description=..., llm=...)`**: crewai refuses a plain-string
+    guardrail on a task without an agent ("Agent is required to use non-programmatic guardrails"). Judge on Haiku
+    even with `--final`.
+40. **No `from __future__ import annotations` in guardrails.py**: a single `guardrail=` is validated with
+    `inspect.signature` without evaluating strings, so `-> tuple[bool, Any]` must be a real type.
+41. **Render in `@after_kickoff`, not a `result_as_answer` task** as in M3: in hierarchical runs every task goes
+    through the manager. `markdown=True` is used on the escalation memo (prose), not on the JSON brief.
+42. **Schemas in task descriptions** (`{threats_schema}`, `{synthesis_schema}`, `{brief_schema}`): agents with tools and
+    managers with delegation tools get no response schema from crewai's loop (M2/M3 finding).
+43. **All deep-dive agents on `LONG_OUTPUT_MAX_TOKENS`**: every answer is a whole analysis or document.
+44. **Market Analyst: `news_search` only, no MCP** (spec lists MCP + News): the scouts already pulled market data into
+    the signals, and each `mcps` server is a subprocess per agent.
+45. **Knowledge**: `TextFileKnowledgeSource` (3 md) + `PDFKnowledgeSource` (battlecard) at crew level; one doc each at
+    agent level for the Pricing and Product Analysts; absolute `Path`s from `P3_KNOWLEDGE_DIR` (a string path is
+    resolved against `./knowledge/`); `KnowledgeConfig(results_limit=3)` with crewai's default 0.6 threshold (real
+    MiniLM scores measured 0.67-0.80). Embedder from `config.embedder_config()` on the crew and every agent.
+46. **Battlecard PDF written by hand** (`generate.minimal_pdf`, ~30 lines, Helvetica, no new dependency), read back by
+    `pdfplumber` (crewai's PDF reader) in a test.
+47. **Test embedder**: `FakeEmbedder` subclasses both crewai's `CustomEmbeddingFunction` and chromadb's
+    `EmbeddingFunction` (two validators check different bases), injected via `config.embedder_scope()` in conftest.
+48. **Test storage isolation**: crewai computes chroma's storage path once at import (`DEFAULT_STORAGE_PATH`) from
+    `CREWAI_STORAGE_DIR` (an app *name* under `XDG_DATA_HOME`) or the cwd's name. conftest now sets both at import.
+    Before that fix, tests and smoke builds wrote fake-embedder collections into the real
+    `~/.local/share/p3_crewai_competitive+intelligence`, and the next live run failed with chroma's "An embedding
+    function already exists in the collection". The polluted chroma files (all created by those runs that day) were
+    deleted; `crewai reset-memories` needs a crew/flow entry point, which arrives in M5. A test pins the isolation.
+49. **`validate_deep_dive_inputs` crew-scoped hook** (§12.1) is left for M8 with the rest of the hook set;
+    `checkpoint=CheckpointConfig(...)` (§8.3) for M5; `memory=` for M7.
+
+## M4 findings
+
+- **Hierarchical execution**: `_get_agent_to_use` returns the manager for every task; delegation tools are injected
+  per task (`_update_manager_tools`); a custom manager must have no tools of its own (crewai raises).
+- **`ConditionalTask`**: may not be first or async; its condition receives the previous task's `TaskOutput`; a skipped
+  task leaves an empty output. Condition is a module-level function (checkpoint-safe, spec §2.2).
+- **Crew planning**: one "Task Execution Planner" call returns `PlannerTaskPydanticOutput` (one plan per task number),
+  appended to each task description. Live it was the single biggest call (~28k in / 8k out, $0.004-0.007).
+- **Agent planning (`PlanningConfig`)**: with `llm=None` it falls back to the agent's own LLM (not OpenAI). It turns
+  one task into a plan/execute/observe loop: 34 Market Analyst and 19 Strategist calls in the sequential run.
+- **Knowledge retrieval costs an LLM call per task**: "rewrite the user query" turns the task prompt into a search query.
+- **Live comparison**: see docs/process-comparison.md. Neither manager delegated in three hierarchical runs.
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

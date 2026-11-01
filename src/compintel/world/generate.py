@@ -57,6 +57,52 @@ Risks: a competitor shipping e-invoicing or UPI credit before us removes our dif
 }
 
 
+# KiranaCloud's sales battlecard template, as a PDF (spec §11.2: PDFKnowledgeSource). Plain ASCII: the minimal
+# PDF below uses the standard Helvetica font, which has no rupee sign, hence "Rs".
+BATTLECARD_LINES = [
+    "KiranaCloud Battlecard Template (Sales, internal)",
+    "",
+    "1. Who they are: positioning, HQ, funding, target stores.",
+    "2. Where we win: Bengali-first app, offline billing on 2G, Kolkata field team of 22,",
+    "   WhatsApp onboarding in a day, GST returns included in Dukaan.",
+    "3. Where they win: fill in per competitor (price, multi-store, enterprise features).",
+    "4. Pricing response rules:",
+    "   - Never discount Dukaan below Rs 649/month without a board decision.",
+    "   - Answer a cheaper rival with annual billing (2 months free) and feature value first.",
+    "   - Escalate to Leadership when a rival undercuts Dukaan by 20% or more.",
+    "5. Objection handling: 'X is cheaper' -> total cost incl. GST filing and support;",
+    "   'X has credit/UPI' -> Khata on UPI is on our roadmap (Q2 2027), offer early access.",
+    "6. Kolkata defence: when a funded rival hires sales staff in Kolkata, assign named",
+    "   field reps to our top 200 accounts within two weeks.",
+]
+
+
+def minimal_pdf(lines: list[str]) -> bytes:
+    """A one-page text PDF with no PDF library: catalog, page tree, page, Helvetica font, one text stream."""
+
+    def esc(text: str) -> str:
+        return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    text = "BT /F1 11 Tf 50 780 Td 15 TL " + " ".join(f"({esc(line)}) Tj T*" for line in lines) + " ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R "
+        "/Resources << /Font << /F1 5 0 R >> >> >>",
+        f"<< /Length {len(text)} >>\nstream\n{text}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out, offsets = b"%PDF-1.4\n", []
+    for i, obj in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{obj}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += "".join(f"{o:010d} 00000 n \n" for o in offsets).encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return out
+
+
 def _page(title: str, company: story.Company, week: int, body: str) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{html.escape(title)}</title></head>
@@ -172,6 +218,7 @@ def write_knowledge(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     for name, text in KNOWLEDGE.items():
         (root / name).write_text(text)
+    (root / "battlecard_template.pdf").write_bytes(minimal_pdf(BATTLECARD_LINES))
 
 
 def generate(out_root: Path, seed: int = SEED) -> None:

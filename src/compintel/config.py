@@ -8,6 +8,8 @@ This module never imports crewai at import time: `apply_env()` must run before c
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +36,7 @@ class Settings(BaseSettings):
     # Tests point these at tmp dirs: the real ledger never sees fake data; tests read a fresh world.
     p3_runs_dir: Path = PROJECT_ROOT / "runs"
     p3_data_dir: Path = PROJECT_ROOT / "data"
+    p3_knowledge_dir: Path = PROJECT_ROOT / "knowledge"
 
 
 @lru_cache
@@ -94,13 +97,30 @@ LONG_OUTPUT_MAX_TOKENS = 8192
 AGENT_LIMITS: dict[str, Any] = {"max_iter": 8, "max_rpm": 20, "max_execution_time": 180}
 
 
-def embedder_config() -> dict[str, Any]:
+# Tests set this to a fake ("custom" provider) so no test downloads the ONNX model; see embedder_scope().
+_embedder_override: dict[str, Any] | None = None
+
+
+def embedder_config() -> Any:  # a crewai EmbedderConfig (a TypedDict union per provider)
     """Local embedder for Memory and Knowledge (replaces crewai's OpenAI default, decisions.md #4/#5).
 
     `onnx` = all-MiniLM-L6-v2 run through chromadb's bundled ONNX runtime: no extra dependency, no API key.
     First use downloads ~80 MB to ~/.cache/chroma. Used from M4 on.
     """
+    if _embedder_override is not None:
+        return _embedder_override
     s = get_settings()
     if s.embedder_provider == "onnx":
         return {"provider": "onnx", "config": {}}
     return {"provider": s.embedder_provider, "config": {"model_name": s.embedder_model}}
+
+
+@contextmanager
+def embedder_scope(spec: dict[str, Any]) -> Iterator[None]:
+    """Use `spec` as the embedder inside the block (tests: a deterministic fake, no download)."""
+    global _embedder_override
+    previous, _embedder_override = _embedder_override, spec
+    try:
+        yield
+    finally:
+        _embedder_override = previous

@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M3 (ShortUpdateCrew: JSON-first, sequential, guardrails, verbatim render) done.
+**Status:** M4 (DeepDiveCrew: hierarchical vs sequential, knowledge, planning, conditional escalation) done.
 
 ## Setup
 
@@ -204,6 +204,51 @@ low-credibility signal, twice, and its feedback pushed the writer to discount a 
 
 The long backstory is paid for on every uncached call and changed nothing. Prompt caching hides most of the
 cost on repeats. Both variants under-rate ShelfMitra in week 2. Week 2 goes to the deep dive in M4, not this crew.
+
+## M4: DeepDiveCrew (the material-week brief)
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run compintel deepdive --week 2` | ~$0.03, ~3 min | Hierarchical, Head of Strategy as manager. Prints the brief, escalation memo, guardrails, delegations, a ground-truth check |
+| `uv run compintel deepdive --week 2 --variant sequential` | ~$0.07, ~6 min | Each task on its specialist; the three analyses in parallel |
+| `uv run compintel deepdive --week 2 --variant manager_llm` | ~$0.03 | crewai's generic manager built from `manager_llm` |
+| `uv run python scripts/process_comparison.py --variant <v>` then `--report` | ~$0.03-0.07 each | Writes [docs/process-comparison.md](docs/process-comparison.md) |
+
+Needs `runs/scout/week-2.agents.json` and the fake web server (the analysts' tools). The first live run
+downloads the ONNX embedding model (~80 MB).
+
+### The crew is classic @CrewBase + YAML
+
+```
+src/compintel/crews/deep_dive/
+├── config/agents.yaml     # role/goal/backstory for 5 specialists + the Head of Strategy
+├── config/tasks.yaml      # descriptions, intended agent, context, async
+└── deep_dive_crew.py      # @CrewBase: @agent, @task, @crew, @before_kickoff, @after_kickoff;
+                           # LLMs, tools, knowledge, planning, guardrails, condition, the 3 variants
+```
+
+### What one run does
+
+1. **`@before_kickoff`** adds the schemas and previous brief to the inputs and registers the signals for the guardrails.
+2. **Crew planning** (`planning=True`, `planning_llm` = Haiku): one planner call writes a step plan into every task.
+3. **Three analyses**: `pricing_analysis`, `product_overlap`, `market_threats` (`async_execution`; in parallel in
+   `sequential` only). `market_threats` must pass `threat_levels_consistent` (each level matches its evidence).
+4. **`synthesis`** (Strategist, `PlanningConfig` medium) combines them into a typed `Synthesis`.
+5. **`escalation_memo`** is a `ConditionalTask`: `any_high_threat(synthesis)` decides whether it runs (`markdown=True`).
+6. **`write_brief`**: a `Brief` behind 4 guardrails (LLM rule first, then citations, credibility, ≤600 words).
+7. **`@after_kickoff`** saves `briefs/drafts/week-NN.json/.md` and the crew's `token_usage` to `runs/crew_usage.jsonl`.
+
+Knowledge: the crew gets all four KiranaCloud docs (3 markdown + the battlecard PDF); the Pricing and Product
+Analysts also get their one doc at agent level. Each task with knowledge costs one extra LLM call: crewai rewrites
+the prompt into a search query before retrieving.
+
+### The process comparison, in one paragraph
+
+On Haiku 5.5 **neither manager ever delegated**, in three live hierarchical runs, although both were offered the
+delegation tools on every call. So "hierarchical" ran as one generalist with all the context: $0.026-0.033 and
+~3 min, against $0.067 and ~6 min for `sequential`, where the specialists' agent planning (`PlanningConfig`) made
+most of the calls. All three cited 4/4 material signals and led with Kolkata; `sequential` and `manager_llm` got
+all three threat levels right. Full table and discussion: [docs/process-comparison.md](docs/process-comparison.md).
 
 ## Later milestones' commands
 

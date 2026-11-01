@@ -158,3 +158,12 @@ async def test_mcp_rating_trend_shows_week_three_dip(world):
 async def test_mcp_unknown_company_is_a_helpful_message_not_an_error(world):
     reply = await _call(world, 3, "funding_rounds", {"company": "KhataKing"})
     assert "Unknown company" in reply and "ShelfMitra" in reply
+
+
+def test_battlecard_pdf_is_readable_by_crewais_pdf_reader(world):
+    import pdfplumber
+
+    with pdfplumber.open(world / "knowledge" / "battlecard_template.pdf") as pdf:
+        text = pdf.pages[0].extract_text()
+    assert "Never discount Dukaan below Rs 649/month" in text
+    assert "Kolkata defence" in text

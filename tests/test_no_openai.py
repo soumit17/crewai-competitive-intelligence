@@ -49,3 +49,24 @@ def test_short_update_crew_runs_without_openai(openai_forbidden):
     hooks.install()
     result, _ = run(Script([brief()]))
     assert result.brief.route == "routine"
+
+
+def test_deep_dive_runs_without_openai(openai_forbidden, world):
+    from compintel import hooks
+    from compintel.crews import deep_dive
+    from tests.deep_dive_script import WEEK2_REPORTS, DeepDiveScript
+
+    hooks.install()
+    result = deep_dive.run(
+        2, WEEK2_REPORTS, variant="manager_agent", fake=ScriptedLLM(Rule(DeepDiveScript()))
+    )
+    assert result.brief.route == "material"
+
+
+def test_crewai_storage_is_outside_the_developers_real_data_dir():
+    from pathlib import Path
+
+    from crewai.rag.chromadb.constants import DEFAULT_STORAGE_PATH
+
+    assert "compintel-tests" in DEFAULT_STORAGE_PATH
+    assert not DEFAULT_STORAGE_PATH.startswith(str(Path.home() / ".local" / "share"))
