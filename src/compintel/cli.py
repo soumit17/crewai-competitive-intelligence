@@ -1,4 +1,4 @@
-"""`compintel` command line. M0: hello, costs. M2: scout. M3: brief. M4: deepdive."""
+"""`compintel` command line. M0: hello, costs. M2: scout. M3: brief. M4: deepdive. M5: run, plot."""
 
 from __future__ import annotations
 
@@ -9,19 +9,16 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from compintel.config import apply_env, get_settings, model_id
+from compintel.config import get_settings, model_id
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
 
 def _bootstrap() -> None:
-    """Env first (crewai reads telemetry/MODEL vars on import), then the global listener and hooks."""
-    apply_env()
-    from compintel import hooks, listeners
+    from compintel.runtime import bootstrap
 
-    listeners.install()
-    hooks.install()
+    bootstrap()
 
 
 @app.command()
@@ -237,6 +234,70 @@ def deepdive(
         f"[yellow]{variant}: {_ledger_rows() - rows_before} LLM calls, {elapsed:.1f}s, "
         f"${ledger.spent_usd - before:.6f}[/yellow]   [yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
     )
+
+
+@app.command()
+def run(
+    week: int = typer.Option(..., "--week", min=1, max=3, help="Week to run end to end."),
+    variant: str = typer.Option(
+        "manager_agent", "--variant", help="Deep-dive variant, if the week is material."
+    ),
+    resume: bool = typer.Option(
+        False, "--resume", help="Resume this week's crashed run instead of starting over."
+    ),
+) -> None:
+    """Live: the whole week through the Flow (scout, route, crew, publish). Weeks 2+ fork the week before."""
+    import os
+
+    from compintel.config import PROJECT_ROOT
+
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    _require_fakeweb()
+    _bootstrap()
+    os.chdir(PROJECT_ROOT)  # briefs/ and the crews' output paths are cwd-relative
+    import time
+
+    from crewai.events.event_bus import crewai_event_bus
+
+    from compintel.cost import get_ledger
+    from compintel.flow import run_week
+
+    ledger = get_ledger()
+    before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
+    flow = run_week(week, deep_dive_variant=variant, resume=resume)
+    elapsed = time.perf_counter() - started
+    crewai_event_bus.flush()
+    s = flow.state
+    console.print(s.brief_markdown)
+    console.print(
+        f"[bold]route[/bold] {s.route} (score {s.materiality_score}): {'; '.join(s.materiality_reasons)}"
+    )
+    console.print(
+        f"state id {s.id}" + (f", forked from {s.previous_state_id}" if s.previous_state_id else "")
+    )
+    console.print(f"published {s.published_path}")
+    # flow.usage_metrics: every LLM call in the run, all crews included (a crew's kickoff().token_usage
+    # isn't).
+    usage = flow.usage_metrics
+    calls = _ledger_rows() - rows_before
+    console.print(
+        f"flow.usage_metrics: {usage.total_tokens:,} tokens in {usage.successful_requests} requests "
+        f"(cost ledger: {calls} calls)"
+    )
+    console.print(
+        f"[yellow]week {week}: {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "
+        f"[yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
+    )
+
+
+@app.command()
+def plot() -> None:
+    """Write docs/flow_plot.html: the Flow's graph, every router branch labelled. $0."""
+    from compintel.flow import plot as write_plot
+
+    _bootstrap()
+    write_plot()
 
 
 def _ledger_rows() -> int:

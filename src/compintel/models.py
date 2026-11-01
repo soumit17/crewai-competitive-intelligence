@@ -1,4 +1,5 @@
-"""Domain models (spec §5). M2: Scout reports. M3: threats, recommendations, the Brief. M4: Synthesis."""
+"""Domain models (spec §5). M2: Scout reports. M3: threats, recommendations, the Brief. M4: Synthesis.
+M5: the Flow's state (CIState) and what it carries from week to week."""
 
 from __future__ import annotations
 
@@ -81,3 +82,45 @@ class Synthesis(BaseModel):
     threats: list[ThreatAssessment]
     key_findings: list[str] = Field(description="At most 5, each citing signal ids in [brackets].")
     recommendations: list[Recommendation]
+
+
+class WeekSummary(BaseModel):
+    """What the Flow carries forward about a published week: enough for routing and "since last week"."""
+
+    week: int
+    route: str
+    headline: str
+    threats: dict[str, str]  # company -> threat level
+    published_path: str | None = None
+
+
+class TieBreak(BaseModel):
+    """The router's one LLM call, used only when the deterministic score lands exactly on the threshold."""
+
+    route: Literal["routine", "material"]
+    reason: str = Field(description="One sentence.")
+
+
+class CIState(BaseModel):
+    """CompetitiveIntelFlow's typed state (spec §5). @persist saves it after every method; next week's run
+    forks it.
+
+    `id` is added by crewai (the flow execution id). Per-week fields are reset when a new week starts;
+    `history`
+    is what survives the fork.
+    """
+
+    week: int = 1
+    previous_state_id: str | None = None
+    history: list[WeekSummary] = Field(default_factory=list)
+    reports: dict[str, SignalReport] = Field(default_factory=dict)
+    our_dukaan_price: int | None = None  # from the knowledge digest (a parallel @start)
+    materiality_score: float = 0.0
+    materiality_reasons: list[str] = Field(default_factory=list)
+    route: str = ""
+    deep_dive_variant: str = "manager_agent"
+    brief: Brief | None = None
+    brief_markdown: str = ""
+    revision_count: int = 0  # M6 (human feedback)
+    feedback_log: list[str] = Field(default_factory=list)  # M6
+    published_path: str | None = None

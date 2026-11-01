@@ -1,0 +1,86 @@
+{
+  "week": 2,
+  "headline": "ShelfMitra's Kolkata sales openings and StockSathi's ₹699 Pro with UPI Udhaar raise threat levels this week [ShelfMitra-2-3] [StockSathi-2-1]",
+  "tl_dr": [
+    "ShelfMitra's reported ₹200 crore Series B and 15 new Kolkata sales openings signal an eastward push into our home market [ShelfMitra-2-2] [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5].",
+    "StockSathi cut Pro from ₹999 to ₹699 (-30%) and bundled UPI Udhaar, store credit with automatic UPI reminders, launched 2026-10-13 [StockSathi-2-1] [StockSathi-2-2].",
+    "ShelfMitra added a bulk GST invoice export that downloads a month of invoices as one ZIP file [ShelfMitra-2-1].",
+    "BahiBook kept pricing unchanged (Solo ₹399, Plus ₹899), shipped only an A5 invoice print fix, and Pune hiring is unchanged [BahiBook-2-1] [BahiBook-2-2] [BahiBook-2-3].",
+    "StockSathi's app rating slipped from 4.4 to 4.3 across 18,469 reviews, with sync delays the top complaint [StockSathi-2-6]."
+  ],
+  "since_last_week": [
+    "Threat levels moved: ShelfMitra from low to high on new Kolkata hiring and funding [ShelfMitra-2-2] [ShelfMitra-2-3]; BahiBook from medium to low on unchanged pricing [BahiBook-2-1]; StockSathi stays high [StockSathi-2-1].",
+    "StockSathi's Pro plan fell from ₹999 to ₹699 with UPI Udhaar now included; the Pro cut was not in the week 1 brief [StockSathi-2-1] [StockSathi-2-2].",
+    "StockSathi's Basic (₹499) and Business (₹1,999) plans are unchanged [StockSathi-2-3] [StockSathi-2-4].",
+    "ShelfMitra's published prices are unchanged, and its Mumbai Backend Engineer and Product Designer roles remain listed [ShelfMitra-2-8] [ShelfMitra-2-6] [ShelfMitra-2-7].",
+    "StockSathi's careers page is unchanged (2 Android Engineer, 1 Customer Success, Bengaluru) [StockSathi-2-5]; BahiBook's Pune Customer Support opening is unchanged [BahiBook-2-3]."
+  ],
+  "threats": [
+    {
+      "company": "ShelfMitra",
+      "threat": "high",
+      "rationale": "Funding plus 15 new Kolkata sales openings point to a direct push into our home market, which raises ShelfMitra from low to high [ShelfMitra-2-2] [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5]. The direct-push reading is an inference from hiring, not a confirmed launch.",
+      "signal_ids": [
+        "ShelfMitra-2-2",
+        "ShelfMitra-2-3",
+        "ShelfMitra-2-4",
+        "ShelfMitra-2-5"
+      ]
+    },
+    {
+      "company": "StockSathi",
+      "threat": "high",
+      "rationale": "The Pro cut to ₹699 with UPI Udhaar bundled is the sharpest price and feature move this week [StockSathi-2-1] [StockSathi-2-2]. Our Khata on UPI is not due until Q2 2027, so the feature gap stays open for now.",
+      "signal_ids": [
+        "StockSathi-2-1",
+        "StockSathi-2-2"
+      ]
+    },
+    {
+      "company": "BahiBook",
+      "threat": "low",
+      "rationale": "Pricing, Pune hiring, and the changelog are unchanged or minor, with nothing pointing to Kolkata [BahiBook-2-1] [BahiBook-2-2] [BahiBook-2-3].",
+      "signal_ids": [
+        "BahiBook-2-1",
+        "BahiBook-2-2",
+        "BahiBook-2-3"
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "Decide the response to StockSathi's ₹699 Pro: lead with annual billing (2 months free) and feature value, and do not cut below the ₹649 floor without a board decision.",
+      "owner": "Leadership",
+      "urgency": "this_week",
+      "signal_ids": [
+        "StockSathi-2-1"
+      ]
+    },
+    {
+      "action": "Assign named field reps to our top 200 Kolkata accounts within two weeks, per the defence rule for funded rivals hiring sales staff in Kolkata.",
+      "owner": "Sales",
+      "urgency": "this_week",
+      "signal_ids": [
+        "ShelfMitra-2-2",
+        "ShelfMitra-2-3",
+        "ShelfMitra-2-4",
+        "ShelfMitra-2-5"
+      ]
+    },
+    {
+      "action": "Confirm the Khata on UPI timing against StockSathi's UPI Udhaar and evaluate pulling the Q2 2027 release forward.",
+      "owner": "Product",
+      "urgency": "this_month",
+      "signal_ids": [
+        "StockSathi-2-2"
+      ]
+    }
+  ],
+  "watchlist": [
+    "Whether StockSathi's rating drop to 4.3 persists next week, with sync delays as the top complaint [StockSathi-2-6].",
+    "ShelfMitra's bulk GST export may partly overlap with our GST e-invoicing plans; the overlap is unconfirmed [ShelfMitra-2-1].",
+    "BahiBook's free one-hour GSTR-1 webinar for first-time filers, from a blog source with 0.6 credibility [BahiBook-2-4]."
+  ],
+  "discounted_claims": [],
+  "route": "material"
+}

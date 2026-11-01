@@ -23,7 +23,11 @@ dependencies = [
 compintel = "compintel.cli:app"
 # The MCP server agents launch over stdio. Short on purpose: crewai prefixes MCP tool names with the command.
 market-signals = "compintel.world.market:main"
-# M5 adds `kickoff` / `plot` (compintel.main) here: the entry points `crewai run` / `crewai flow plot` call.
+# The entry points `crewai run` / `crewai flow plot` call (same names as the `crewai create flow` template).
+kickoff = "compintel.flow:kickoff"
+plot = "compintel.flow:plot"
+# `crewai replay -t <task_id>` runs `uv run replay <task_id>`.
+replay = "compintel.replay:main"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]

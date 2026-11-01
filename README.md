@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M4 (DeepDiveCrew: hierarchical vs sequential, knowledge, planning, conditional escalation) done.
+**Status:** M5 (the Flow: routing, week-over-week fork, crash-resume, crew checkpointing, replay) done.
 
 ## Setup
 
@@ -251,11 +251,58 @@ can't. Verdict: for a fixed pipeline like this one, the explicit sequential proc
 Full table, discussion, and the two mistakes that made earlier versions of the table wrong:
 [docs/process-comparison.md](docs/process-comparison.md).
 
+## M5: the Flow (a whole week, end to end)
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run compintel run --week 1` | ~$0.015, ~75 s | Scout → route → crew → publish `briefs/week-01.md`. Prints the route and why, the state id, `flow.usage_metrics` |
+| `uv run compintel run --week 2` | ~$0.04-0.07, ~4-7 min | Forks week 1's state; routes **material** (deep dive). `--variant sequential` recommended (see below) |
+| `uv run compintel run --week 3` | ~$0.015 | Forks week 2; routes **routine** only because it knows week 2 (see "the router") |
+| `uv run compintel run --week N --resume` | the unfinished part only | Continues a week that crashed: scouting and a finished crew step aren't paid for again |
+| `uv run compintel plot` | $0 | `docs/flow_plot.html`: the graph with every router branch |
+| `crewai run` · `crewai run --inputs '{"week": 2}'` · `crewai flow plot` | as above | crewai's own CLI, through the `kickoff` / `plot` scripts in pyproject.toml |
+| `crewai log-tasks-outputs` · `crewai replay -t <task_id>` | the replayed tasks | Re-run the latest crew kickoff from one task, earlier outputs reused |
+
+Weeks must run in order: week N forks week N-1's published state (`runs/state_index.json`).
+
+### What one week does
+
+```
+load_week ─────┐   (+ load_knowledge_digest, a parallel @start: reads our Dukaan price, no LLM)
+scout_all ─────┴ and_ → assess_materiality (@router: nothing_new | routine | material)
+                          → quiet_week | run_short_update | run_deep_dive → render_draft → publish
+```
+
+- **`@persist()`** saves the typed state (`CIState`) after every method (SQLite in crewai's data dir).
+- **Fork, week to week**: `kickoff(restore_from_state_id=<last week's id>)` hydrates last week's state under a new id;
+  `load_week` moves last week's brief into `history`. Each week is its own execution; earlier weeks stay on record.
+- **The router** is code (`materiality.py`): a competitor already rated "high" last week is *continuing*, not
+  escalating. Material = a fresh pricing change or funding, or 3+ fresh high-impact signals; exactly 2 = one Haiku
+  tie-break call. Live week 3 had four "new" high-impact signals (scouts have no memory) and routed routine only
+  because of week 2's threat levels.
+- **Crash-resume**: a run is marked in progress at `load_week`; `--resume` forks its persisted state, and the
+  paid steps skip work already there.
+
+### Live run of all three weeks (Haiku 5.5)
+
+| Week | Route | Cost | Notes |
+|---|---|---|---|
+| 1 | routine | $0.014 | `flow.usage_metrics` = 17 requests = the cost ledger's 17 calls |
+| 2 | material | $0.052 failed + $0.068 resumed | First try (`manager_agent`): the Head of Strategy wrote the brief itself and kept a wrong "not yet confirmed" hedge through all 3 guardrail retries. `--resume --variant sequential`: no scouting repeated, published |
+| 3 | routine | $0.014 (+ a failed first try) | First try: a scout repeated an empty `news_search` 5 times and crewai's loop detector stopped the week (fixed: the tool now says plainly there's nothing). Resumed; rumor discounted; ShelfMitra high, StockSathi medium |
+
+### Checkpointing and replay
+
+- **ShortUpdateCrew** checkpoints after every task (`runs/checkpoints/short_update.db`); `short_update.resume()`
+  continues a killed run, and the finished tasks aren't re-run (tested: one model call on resume).
+- **DeepDiveCrew can't be checkpointed** in crewai 1.15.33: a snapshot fails while any agent executor is mid-run,
+  and this crew always has one. A test fails when upstream fixes it.
+- **`crewai replay -t <task_id>`** works for whichever crew ran last (the `replay` script picks it).
+
 ## Later milestones' commands
 
 | Command | Cost | Milestone |
 |---|---|---|
-| `uv run compintel run --week 1\|2\|3` | ~$0.3–0.6 / week | M5 |
 | `uv run compintel chat` | cents | M7 |
 
 ## How one weekly run flows, end to end

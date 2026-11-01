@@ -7,15 +7,20 @@ the JSON points at (`save_draft`; guardrails live in compintel.guardrails).
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
 from crewai import Crew, CrewOutput, TaskOutput
 from crewai.project.crew_loader import load_crew
+from crewai.state.checkpoint_config import CheckpointConfig
+from crewai.state.provider.sqlite_provider import SqliteProvider
 from crewai.utilities.pydantic_schema_utils import generate_model_description
 
 from compintel import hooks, llms
-from compintel.guardrails import brief_from
+from compintel.config import get_settings
+from compintel.guardrails import brief_from, register_signals
 from compintel.models import Brief, SignalReport, ThreatAssessments
 from compintel.tools.render_brief import draft_path
 
@@ -69,6 +74,72 @@ class ShortUpdateResult:
     output: CrewOutput
 
 
+def checkpoint_db() -> Path:
+    path = get_settings().p3_runs_dir / "checkpoints" / "short_update.db"
+    path.parent.mkdir(parents=True, exist_ok=True)  # SqliteProvider doesn't create the folder
+    return path
+
+
+def checkpoint_config() -> CheckpointConfig:
+    """crew.jsonc's `checkpoint` (via crew_refs): one snapshot per finished task, the last 20 kept."""
+    return CheckpointConfig(
+        location=str(checkpoint_db()),
+        provider=SqliteProvider(),
+        on_events=["task_completed"],
+        max_checkpoints=20,
+    )
+
+
+def latest_checkpoint() -> str | None:
+    """`db_path#checkpoint_id` of the newest snapshot, the form SqliteProvider restores from."""
+    db = checkpoint_db()
+    if not db.exists() or db.stat().st_size == 0:
+        return None
+    with sqlite3.connect(db) as conn:
+        row = conn.execute("SELECT id FROM checkpoints ORDER BY rowid DESC LIMIT 1").fetchone()
+    return f"{db}#{row[0]}" if row else None
+
+
+def resume(location: str | None = None, final: bool = False, fake=None) -> ShortUpdateResult:
+    """Continue a killed run from its last checkpoint: finished tasks are skipped, not re-run.
+
+    A restore rebuilds the crew from the snapshot, which does not bring back (crewai docs): callable
+    guardrails, and our LLM objects as configured here; callbacks only with CREWAI_DESERIALIZE_CALLBACKS=1.
+    They are re-attached from a freshly loaded crew. The signal registry is rebuilt from the saved inputs.
+    """
+    location = location or latest_checkpoint()
+    if location is None:
+        raise ValueError("no ShortUpdateCrew checkpoint to resume from")
+    # Our own snapshot file, so its callback references (save_draft, register_signals) are trusted.
+    os.environ["CREWAI_DESERIALIZE_CALLBACKS"] = "1"
+    crew = Crew.from_checkpoint(CheckpointConfig(restore_from=location))
+    fresh = load(final=final, fake=fake)
+    fresh_agents = {a.role: a for a in fresh.agents}
+    for agent in crew.agents:
+        agent.llm = fresh_agents[agent.role].llm
+    fresh_tasks = {t.name: t for t in fresh.tasks}
+    for task in crew.tasks:
+        task.guardrails = fresh_tasks[task.name].guardrails  # type: ignore[assignment]
+        # Rebuild crewai's guardrail list (and the string guardrail's LLM binding); a model validator method.
+        task.ensure_guardrails_is_list_of_callables()  # type: ignore[operator]
+    inputs = crew.checkpoint_inputs or {}
+    register_signals(inputs)
+    output = crew.kickoff()
+    assert isinstance(output, CrewOutput)
+    return _result(crew, output)
+
+
+def _result(crew: Crew, output: CrewOutput) -> ShortUpdateResult:
+    classify, write, _render = crew.tasks
+    assert classify.output is not None and write.output is not None
+    threats = classify.output.pydantic
+    if not isinstance(threats, ThreatAssessments):
+        threats = ThreatAssessments.model_validate_json(classify.output.raw)
+    return ShortUpdateResult(
+        brief=brief_from(write.output), threats=threats, markdown=output.raw, output=output
+    )
+
+
 def run(week: int, reports: dict[str, SignalReport], final: bool = False, fake=None) -> ShortUpdateResult:
     previous = Path("briefs") / f"week-{week - 1:02d}.md"
     crew = load(final=final, fake=fake)
@@ -81,13 +152,6 @@ def run(week: int, reports: dict[str, SignalReport], final: bool = False, fake=N
             "brief_schema": BRIEF_SCHEMA,
         }
     )
-    classify, write, _render = crew.tasks
-    assert classify.output is not None and write.output is not None
-    threats = classify.output.pydantic
-    if not isinstance(threats, ThreatAssessments):
-        threats = ThreatAssessments.model_validate_json(classify.output.raw)
     # CrewStreamingOutput only comes back with stream=True, which this crew doesn't set.
     assert isinstance(output, CrewOutput)
-    return ShortUpdateResult(
-        brief=brief_from(write.output), threats=threats, markdown=output.raw, output=output
-    )
+    return _result(crew, output)

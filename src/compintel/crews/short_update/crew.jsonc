@@ -6,6 +6,10 @@
   "agents": ["market_analyst", "brief_writer"],
   // Sequential: each task runs once, in order, with a fixed agent. No manager, so no delegation overhead.
   "process": "sequential",
+  // Crew checkpointing (spec §13): a snapshot after every finished task (SQLite), so a killed run resumes
+  // without redoing finished tasks: short_update.resume(). Tasks here run one at a time with no manager, which
+  // is what crewai 1.15.33 needs to serialize a snapshot (the deep dive can't; see docs/decisions.md).
+  "checkpoint": {"python": "crew_refs.checkpoint"},
   // Registers this run's signal ids so the citation guardrail can reject invented ones.
   "before_kickoff_callbacks": [{"python": "crew_refs.register_signals"}],
   "tasks": [
@@ -15,7 +19,11 @@
       "description": "Week {week}. Assess how much each competitor threatens KiranaCloud this week.\nKiranaCloud: Kolkata kirana-store SaaS, Dukaan plan ₹799/month, 2027 roadmap: GST e-invoicing (Q1) and UPI credit (Q2).\nThis week's signals (JSON): {signals}\nRules: exactly one assessment each for StockSathi, ShelfMitra and BahiBook. A threat is high only for new, credible signals with high impact on us. Signals with credibility below 0.5 are unverified and cannot raise a threat. Treat two signals about the same fact as one. In the rationale cite ids in square brackets; list the same ids in signal_ids.",
       "expected_output": "Three threat assessments, one per competitor, each with cited signal ids.",
       // A model class, not list[...]: ThreatAssessments wraps the list.
-      "output_pydantic": {"python": "crew_refs.ThreatAssessments"}
+      "output_pydantic": {"python": "crew_refs.ThreatAssessments"},
+      // Each level must match its evidence (the deep dive's market_threats uses the same function). Live week 1
+      // rated StockSathi "high" over an unchanged Basic plan with no high-impact signal behind it.
+      "guardrail": {"python": "crew_refs.threat_levels_consistent"},
+      "guardrail_max_retries": 1
     },
     {
       "name": "write_short_brief",

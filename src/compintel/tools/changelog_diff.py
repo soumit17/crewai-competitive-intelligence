@@ -1,4 +1,5 @@
-"""ChangelogDiffTool (spec §6): `@tool` decorator. Diffs this week's changelog page against last week's so the
+"""ChangelogDiffTool (spec §6): `@tool` decorator (scouts) and a BaseTool twin (checkpointed deep dive).
+Diffs this week's changelog page against last week's so the
 agent gets only what's new, not a page of history it would have to compare itself."""
 
 from __future__ import annotations
@@ -6,9 +7,11 @@ from __future__ import annotations
 import json
 
 from bs4 import BeautifulSoup
-from crewai.tools import tool
+from crewai.tools import BaseTool, tool
+from pydantic import BaseModel
 
 from compintel.tools.fakeweb_client import FakeWebError, fetch
+from compintel.tools.pricing_parse import CompanyWeek
 from compintel.world.story import week_start
 
 
@@ -35,12 +38,33 @@ def added_entries(company: str, week: int) -> list[dict]:
     return [e for e in current if e["date"] >= week_start(1).isoformat()]
 
 
-@tool("changelog_diff")
-def changelog_diff(company: str, week: int) -> str:
-    """List the product changelog entries a competitor added in a given week (new since the previous week),
-    newest first, as JSON. Use this instead of reading the changelog page yourself."""
+DESCRIPTION = (
+    "List the product changelog entries a competitor added in a given week (new since the previous week), "
+    "newest first, as JSON. Use this instead of reading the changelog page yourself."
+)
+
+
+def changelog_report(company: str, week: int) -> str:
     try:
         added = added_entries(company, week)
     except FakeWebError as e:
         return f"Error: {e}"
     return json.dumps({"company": company, "week": week, "added": added}, ensure_ascii=False)
+
+
+@tool("changelog_diff")
+def changelog_diff(company: str, week: int) -> str:
+    """List the product changelog entries a competitor added in a given week (new since the previous week),
+    newest first, as JSON. Use this instead of reading the changelog page yourself."""
+    return changelog_report(company, week)
+
+
+class ChangelogDiffTool(BaseTool):
+    """BaseTool twin for checkpointed crews (see pricing_parse.PricingParseTool)."""
+
+    name: str = "changelog_diff"
+    description: str = DESCRIPTION
+    args_schema: type[BaseModel] = CompanyWeek
+
+    def _run(self, company: str, week: int) -> str:
+        return changelog_report(company, week)

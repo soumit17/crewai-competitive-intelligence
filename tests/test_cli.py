@@ -101,3 +101,27 @@ def test_brief_command_runs_the_crew_on_saved_scout_reports(tmp_path, monkeypatc
 def test_brief_command_needs_scout_reports_first():
     result = runner.invoke(app, ["brief", "--week", "1"])
     assert result.exit_code != 0 and "compintel scout --week 1" in result.output
+
+
+def test_run_command_runs_a_week_through_the_flow(world, monkeypatch, tmp_path):
+    from compintel import config
+    from tests.test_flow import WEEKS, brief_for
+
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    from types import SimpleNamespace
+
+    from compintel import scouting
+    from compintel.crews import short_update
+
+    async def scout_all(week, llm=None, verbose=False):
+        return WEEKS[week]
+
+    monkeypatch.setattr(scouting, "scout_all", scout_all)
+    monkeypatch.setattr(
+        short_update, "run", lambda week, reports, **k: SimpleNamespace(brief=brief_for(week, "routine"))
+    )
+    result = runner.invoke(app, ["run", "--week", "1"])
+    assert result.exit_code == 0, result.output
+    assert "route routine" in result.output and "published briefs/week-01.md" in result.output
+    assert "flow.usage_metrics:" in result.output
+    assert (tmp_path / "briefs" / "week-01.md").exists()

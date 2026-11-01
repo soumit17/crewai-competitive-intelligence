@@ -1,4 +1,5 @@
-"""PricingParseTool (spec §6): `@tool` decorator. Parsing prices in code beats asking the LLM to read HTML:
+"""PricingParseTool (spec §6): `@tool` decorator (scouts) and a BaseTool twin (checkpointed deep dive).
+Parsing prices in code beats asking the LLM to read HTML:
 exact numbers, no tokens spent on markup, and the week-over-week diff is computed, not guessed."""
 
 from __future__ import annotations
@@ -7,7 +8,8 @@ import json
 import re
 
 from bs4 import BeautifulSoup
-from crewai.tools import tool
+from crewai.tools import BaseTool, tool
+from pydantic import BaseModel, Field
 
 from compintel.tools.fakeweb_client import FakeWebError, fetch
 
@@ -45,10 +47,13 @@ def price_changes(previous: list[dict], current: list[dict]) -> list[str]:
     return changes
 
 
-@tool("pricing_parse")
-def pricing_parse(company: str, week: int) -> str:
-    """Get a competitor's pricing plans for a week as JSON, plus the price changes since the previous week.
-    Prices are INR per month. Use this instead of reading the pricing page yourself."""
+DESCRIPTION = (
+    "Get a competitor's pricing plans for a week as JSON, plus the price changes since the previous week. "
+    "Prices are INR per month. Use this instead of reading the pricing page yourself."
+)
+
+
+def pricing_report(company: str, week: int) -> str:
     try:
         current = parse_plans(fetch(company, week, "pricing"))
         previous = parse_plans(fetch(company, week - 1, "pricing")) if week > 1 else []
@@ -63,3 +68,27 @@ def pricing_parse(company: str, week: int) -> str:
         },
         ensure_ascii=False,
     )
+
+
+@tool("pricing_parse")
+def pricing_parse(company: str, week: int) -> str:
+    """Get a competitor's pricing plans for a week as JSON, plus the price changes since the previous week.
+    Prices are INR per month. Use this instead of reading the pricing page yourself."""
+    return pricing_report(company, week)
+
+
+class CompanyWeek(BaseModel):
+    company: str = Field(description='Exact company name, e.g. "StockSathi".')
+    week: int = Field(ge=1, description="Week number.")
+
+
+class PricingParseTool(BaseTool):
+    """The same tool as a BaseTool, for crews that checkpoint: a `@tool` keeps the raw function in a field
+    crewai 1.15.33 can't serialize, so every checkpoint write of an agent holding one fails (seen in M5)."""
+
+    name: str = "pricing_parse"
+    description: str = DESCRIPTION
+    args_schema: type[BaseModel] = CompanyWeek
+
+    def _run(self, company: str, week: int) -> str:
+        return pricing_report(company, week)

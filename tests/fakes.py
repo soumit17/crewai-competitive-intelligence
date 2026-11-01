@@ -26,7 +26,7 @@ from crewai.hooks.dispatch import HookAborted
 from crewai.llms.base_llm import LLMCallBlockedError, llm_call_context
 from crewai.rag.core.types import Documents, Embeddings
 from crewai.rag.embeddings.providers.custom.embedding_callable import CustomEmbeddingFunction
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 DEFAULT_USAGE = {
     "input_tokens": 1000,
@@ -66,7 +66,9 @@ class ScriptedLLM(BaseLLM):
 
     _rules: list[Rule] = PrivateAttr(default_factory=list)
     _used: dict[int, int] = PrivateAttr(default_factory=dict)
-    calls: list[dict[str, Any]] = []
+    # exclude=True: kept out of serialization (it holds response_model classes; crew checkpoints serialize
+    # LLMs).
+    calls: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
     def __init__(self, *rules: Rule, **kwargs: Any) -> None:
         # BaseLLM validates `model` before field defaults apply.

@@ -300,6 +300,76 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 - **Live comparison** (after #50-#53): same quality and cost across the three variants; managers delegate the tool-backed
   analyses and do the rest themselves; `sequential` fastest. See docs/process-comparison.md.
 
+## M5 decisions
+
+54. **Flow class and CLI entry points both live in `flow.py`; no `main.py`.** `crewai run --inputs` imports the
+    `kickoff` script's module and calls the one Flow class *defined in it* directly, and a Flow subclass loses its
+    inherited `@start`/`@listen` graph in crewai 1.15.33 (the metaclass registers only methods in the class body;
+    a `WeeklyBriefFlow(CompetitiveIntelFlow)` had zero start methods and plotted empty). So the spec's flow.py +
+    main.py split can't work; pyproject's `kickoff` / `plot` / `replay` point at `compintel.flow` / `compintel.replay`.
+55. **`CompetitiveIntelFlow.kickoff` is overridden** (a plain method, so the graph is unaffected): it bootstraps
+    (hooks, cost listener: scouts and crews fail closed without them) and, for weeks after the first, defaults
+    `restore_from_state_id` to last week's published state from `runs/state_index.json`. Every way of running a
+    week (CLI, `crewai run`, `crewai run --inputs`) then forks correctly.
+56. **The router is code, with history.** `materiality.assess`: a competitor rated "high" last week is continuing,
+    not escalating; material = a fresh decisive move (pricing change, funding) or 3+ fresh high-impact signals;
+    exactly 2 = a tie broken by one Haiku call (`TieBreak`). On the live scout reports, week 3 routes routine only
+    with week 2's threat levels (it has four "new" high-impact signals: scouts have no memory); without them,
+    material. That is the spec's case for `@persist`.
+57. **`load_week` refuses a fork that didn't hydrate.** crewai falls back silently to a fresh state when
+    `restore_from_state_id` isn't found.
+58. **Crash-resume = fork the crashed run's persisted state + idempotent steps** (decided with the developer).
+    `load_week` records the run as in progress; `scout_all` and the crew steps skip work already in the state;
+    `run_week(week, resume=True)` / `compintel run --resume` forks the in-progress state. Not `inputs.id`
+    (deprecated) and not Flow checkpointing: resuming our flow from a checkpoint skipped the completed methods and
+    then stopped at the `and_` router, so the crew, render and publish never ran.
+59. **Crew checkpointing on the ShortUpdateCrew only** (decided with the developer). crewai 1.15.33 can't serialize a
+    snapshot while an agent executor is mid-run, and the DeepDiveCrew always has one (parallel analyses in
+    `sequential`, the manager through every task otherwise); `test_deep_dive_checkpoints_still_fail_upstream`
+    pins it. The ShortUpdateCrew (one task at a time, no manager) writes one checkpoint per task;
+    `short_update.resume()` continues a killed run and the finished tasks aren't re-run.
+60. **A restore drops what it can't serialize, so `resume()` re-attaches it**: callable guardrails, our LLM objects
+    (from a freshly loaded crew), the signal registry (from `crew.checkpoint_inputs`); `save_draft` /
+    `register_signals` callbacks need `CREWAI_DESERIALIZE_CALLBACKS=1`, set by `resume()` for our own snapshot files.
+61. **`@tool` tools can't be checkpointed**: `Tool.func` is a plain `Callable` field with no serializer, so every
+    snapshot of an agent holding one fails. Scouts keep `pricing_parse` / `changelog_diff` as `@tool`; checkpointable
+    crews get `PricingParseTool` / `ChangelogDiffTool` (`BaseTool` twins over the same functions).
+62. **`replay` script** for `crewai replay -t <task_id>` (the CLI runs `uv run replay <id>`): rebuilds the crew the
+    stored task outputs came from (3 tasks: short update; 6: deep dive, variant from the stored agents) and
+    re-registers the signals (`Crew.replay` doesn't run before-kickoff callbacks).
+63. **Test harness**: conftest resets crewai's lazily-registered checkpoint handlers (`_handlers_registered`) and our
+    `runtime._done` per test, because the per-test event-bus scope removes handlers registered inside it.
+64. **Plot**: `Flow.plot()` always renders into a fresh temp dir; `compintel plot` copies the html + css + js to `docs/`.
+65. **`SqliteProvider` doesn't create its folder**; `checkpoint_db()` does.
+
+## M5 findings
+
+- **Flow methods**: sync methods run in a worker thread (`asyncio.to_thread`), so a crew's plain `kickoff()` works
+  there; `scout_all` is async and awaits the scouts. `@persist()` must be called (`@persist` alone fails).
+- **`flow.usage_metrics`** = every LLM call in the run; live week 1 it matched the cost ledger exactly (17 requests).
+- **Flow checkpoints** are written per method (`method_execution_finished`), but resuming from one doesn't continue
+  past an `and_` router (see #58).
+- **Crew checkpoint serialization failures are silent**: the checkpoint listener catches them and emits
+  `CheckpointFailedEvent`; nothing is logged. Our own fakes also broke it (`ScriptedLLM.calls`, the fake embedder
+  class), fixed for tests.
+- **Silent process exits in scratch probes**: several standalone probe scripts died with exit status 1 and no
+  output while chromadb's Rust layer was upserting knowledge at crew kickoff. Never seen in the test suite or in
+  live runs; not resolved.
+- **Hierarchical guardrail retries go to the manager.** Live week 2 (manager_agent): the Head of Strategy wrote the
+  brief itself and rewrote it on each guardrail retry, keeping a hedge ("reported but not yet confirmed") on a
+  confirmed launch; all three attempts failed the LLM rule and the week stopped. Resumed with the sequential
+  variant (see the README's M5 section).
+- **An empty tool result can stall a run.** Live week 3: BahiBook has no week-3 news, `news_search` returned
+  `{"articles": []}`, the scout repeated the call, and crewai's loop detector raised after 5 identical calls; the
+  exception failed `asyncio.gather` and the whole week. The tool now answers in words ("No news articles ... don't
+  search again"). One failed scout still fails the week (loud, resumable), by choice.
+- **Short-update threat levels now go through `threat_levels_consistent`** too: live week 1 rated StockSathi "high"
+  over an unchanged Basic plan (no high-impact signal). That brief stayed published, so week 2's router counted two
+  StockSathi signals as continuations; week 2 still routed material on ShelfMitra's fresh moves.
+- **Live three-week run**: routes routine → material → routine, as in the ground truth; week 3 threat levels 2/3
+  (BahiBook low, expected medium). `flow.usage_metrics.successful_requests` equalled the cost ledger's call count in
+  every run.
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

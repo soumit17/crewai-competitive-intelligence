@@ -9,7 +9,12 @@ from typing import Any
 
 from compintel import llms
 from compintel.crews.short_update import save_draft
-from compintel.guardrails import every_claim_cites_signal, low_credibility_only_discounted, register_signals
+from compintel.guardrails import (
+    every_claim_cites_signal,
+    low_credibility_only_discounted,
+    register_signals,
+    threat_levels_consistent,
+)
 from compintel.models import Brief, ThreatAssessments
 
 __all__ = [
@@ -19,9 +24,15 @@ __all__ = [
     "low_credibility_only_discounted",
     "register_signals",
     "save_draft",
+    "threat_levels_consistent",
 ]
 
 
 def __getattr__(name: str) -> Any:
-    # "crew_refs.analyst" / "crew_refs.writer": built on access by compintel.llms (config.make_llm).
+    # Built on access, so each load_crew() picks up the current settings (tests point them at tmp dirs).
+    if name == "checkpoint":
+        from compintel.crews.short_update import checkpoint_config
+
+        return checkpoint_config()
+    # "crew_refs.analyst" / "crew_refs.writer": built by compintel.llms (config.make_llm).
     return getattr(llms, name)

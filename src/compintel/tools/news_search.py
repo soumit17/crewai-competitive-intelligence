@@ -25,7 +25,7 @@ class NewsSearchArgs(BaseModel):
 
 
 def cache_only_hits(args: dict, result: str) -> bool:
-    return '"articles": []' not in result and not result.startswith("Error")
+    return result.startswith("{") and '"articles": []' not in result
 
 
 class NewsSearchTool(BaseTool):
@@ -52,6 +52,13 @@ class NewsSearchTool(BaseTool):
                 "WHERE company = ? AND week = ? AND source_credibility >= ? ORDER BY date",
                 (company, week, min_credibility),
             ).fetchall()
+        if not rows:
+            # Said plainly: a bare {"articles": []} led a live scout to repeat the same search until crewai's
+            # loop detector stopped it (5 identical calls), failing the whole week's scouting.
+            return (
+                f"No news articles about {company} in week {week}. "
+                "This is a complete answer; don't search again."
+            )
         articles = [
             {"id": i, "title": t, "source": s, "credibility": c, "snippet": b} for i, t, s, c, b in rows
         ]

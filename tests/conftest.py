@@ -42,6 +42,15 @@ def _isolated(tmp_path, monkeypatch):
     from compintel import guardrails
 
     guardrails.reset()
+    from crewai.state import checkpoint_listener
+
+    # crewai registers its checkpoint handlers once per process, lazily; the per-test handler scope below
+    # removes
+    # them, so let the next CheckpointConfig register them again inside this test's scope.
+    checkpoint_listener._handlers_registered = False
+    from compintel import runtime
+
+    runtime._done = False  # bootstrap() is once per process; tests clear hooks and handlers per test
     monkeypatch.setenv("P3_RUNS_DIR", str(tmp_path / "runs"))
     get_settings.cache_clear()
     get_ledger.cache_clear()

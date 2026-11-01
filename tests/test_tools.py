@@ -55,6 +55,7 @@ def test_tools_have_the_names_the_prompt_uses():
 def test_cache_function_caches_hits_only():
     assert cache_only_hits({}, json.dumps({"articles": [{"id": "x"}]})) is True
     assert cache_only_hits({}, json.dumps({"articles": []})) is False
+    assert cache_only_hits({}, "No news articles about BahiBook in week 3. A complete answer") is False
     assert cache_only_hits({}, "Error: unknown company") is False
     assert NewsSearchTool().cache_function is cache_only_hits
 
@@ -74,3 +75,8 @@ def test_render_brief_is_a_result_as_answer_tool_reading_the_approved_draft():
     md = tool.run(week=2)
     assert md == render_markdown(Brief.model_validate(GOOD))
     assert md.startswith("# Week 02: StockSathi undercuts us") and "| StockSathi | **high** |" in md
+
+
+def test_news_search_says_plainly_when_there_is_nothing(world):
+    out = NewsSearchTool().run(company="BahiBook", week=3)
+    assert out.startswith("No news articles about BahiBook in week 3") and "don't search again" in out

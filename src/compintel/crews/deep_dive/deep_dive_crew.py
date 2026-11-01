@@ -39,9 +39,9 @@ from compintel.guardrails import (
     threat_levels_consistent,
 )
 from compintel.models import Brief, Synthesis, ThreatAssessments
-from compintel.tools.changelog_diff import changelog_diff
+from compintel.tools.changelog_diff import ChangelogDiffTool
 from compintel.tools.news_search import NewsSearchTool
-from compintel.tools.pricing_parse import pricing_parse
+from compintel.tools.pricing_parse import PricingParseTool
 from compintel.tools.render_brief import draft_path, render_markdown
 
 VARIANTS = ("sequential", "manager_llm", "manager_agent")
@@ -90,7 +90,7 @@ class DeepDiveCrew:
         # Agent-level knowledge: only our pricing doc, so retrieval stays on-topic for this specialist.
         return self._agent(
             "pricing_analyst",
-            tools=[pricing_parse],
+            tools=[PricingParseTool()],
             knowledge_sources=[knowledge.text_source(knowledge.PRICING)],
         )
 
@@ -98,7 +98,7 @@ class DeepDiveCrew:
     def product_analyst(self) -> Agent:
         return self._agent(
             "product_analyst",
-            tools=[changelog_diff],
+            tools=[ChangelogDiffTool()],
             knowledge_sources=[knowledge.text_source(knowledge.ROADMAP)],
         )
 
@@ -275,6 +275,11 @@ class DeepDiveCrew:
             # Crew-level knowledge: all of KiranaCloud's docs, for every agent (and the manager).
             knowledge_sources=knowledge.crew_sources(),
             embedder=embedder_config(),
+            # No crew checkpointing here (spec §13 asks for it): in crewai 1.15.33 a snapshot fails to
+            # serialize
+            # while any agent executor is mid-run, and this crew always has one (parallel analyses in
+            # "sequential", the manager through every task otherwise). See docs/decisions.md and
+            # test_deep_dive_checkpoints_still_fail_upstream. The ShortUpdateCrew checkpoints and resumes.
             verbose=self.verbose,
             **manager,
         )
