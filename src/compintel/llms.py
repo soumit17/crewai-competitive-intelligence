@@ -28,7 +28,9 @@ def __getattr__(name: str) -> Any:
     if name == "writer":
         # Spec §7: the Brief Writer moves to MODEL_FINAL (Sonnet) only on --final. It writes a whole Brief.
         return make_llm(final=_final, max_tokens=LONG_OUTPUT_MAX_TOKENS)
-    return make_llm()
+    # The analyst's ThreatAssessments JSON was cut off at the default 1500 (thinking counts against it):
+    # live M7 week 1 failed 3 tries in a row with "EOF while parsing a string".
+    return make_llm(max_tokens=LONG_OUTPUT_MAX_TOKENS)
 
 
 @contextmanager

@@ -220,9 +220,10 @@ def test_signals_input_is_compact():
     assert set(rows[0]) == {"id", "company", "kind", "detail", "credibility", "novelty", "impact"}
 
 
-def test_writer_gets_the_long_output_budget(hooks_on):
-    from compintel.config import LONG_OUTPUT_MAX_TOKENS, get_settings
+def test_both_agents_get_the_long_output_budget(hooks_on):
+    from compintel.config import LONG_OUTPUT_MAX_TOKENS
 
     analyst, writer = short_update.load().agents
-    assert analyst.llm.max_tokens == get_settings().max_tokens  # type: ignore[union-attr]
+    # The analyst too since M7: its ThreatAssessments JSON was truncated at 1500 live, three tries in a row.
+    assert analyst.llm.max_tokens == LONG_OUTPUT_MAX_TOKENS  # type: ignore[union-attr]
     assert writer.llm.max_tokens == LONG_OUTPUT_MAX_TOKENS  # type: ignore[union-attr]

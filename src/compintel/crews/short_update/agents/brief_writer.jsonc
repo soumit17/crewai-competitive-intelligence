@@ -7,6 +7,8 @@
   // MODEL_DEV (Haiku) by default; MODEL_FINAL (Sonnet) with --final (spec §7).
   "llm": {"python": "crew_refs.writer"},
   "tools": ["crewai_tools:FileReadTool"],
+  // A read-only MemorySlice over /competitor, /brief and /hitl (compintel.memory): recalled before each task.
+  "memory": {"python": "crew_refs.writer_memory"},
   "max_iter": 8,
   "max_rpm": 20,
   "max_execution_time": 180,

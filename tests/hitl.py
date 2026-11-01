@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from compintel.models import Brief
-from tests.fakes import Rule, ScriptedLLM
+from tests.fakes import Rule, ScriptedLLM, memory_reply
 
 APPROVE = ("Approved, looks good.", "approve")
 
@@ -49,13 +49,7 @@ def hitl_llm(reviewer: ScriptedReviewer, pre_review: Callable[[Brief, str], Brie
         if response_model is Brief:  # the learn=True pre-review of the Brief
             brief = Brief.model_validate_json(_between(prompt, "Output to review:", "\n\nLessons from past"))
             return pre_review(brief, _between(prompt, "Lessons from past human feedback:", "\n\nApply"))
-        if name == "MemoryAnalysis":
-            return {"suggested_scope": "/hitl", "categories": ["editorial"], "importance": 0.8}
-        if name == "QueryAnalysis":
-            return {"recall_queries": ["editorial lessons"]}
-        if name == "ConsolidationPlan":
-            return {"insert_new": True}
-        return ""
+        return memory_reply(messages, response_model)  # Memory's own calls (save analysis, extraction)
 
     return ScriptedLLM(Rule(answer))
 

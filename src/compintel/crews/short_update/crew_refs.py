@@ -30,6 +30,10 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     # Built on access, so each load_crew() picks up the current settings (tests point them at tmp dirs).
+    if name == "writer_memory":
+        from compintel import memory
+
+        return memory.writer_slice()
     if name == "checkpoint":
         from compintel.crews.short_update import checkpoint_config
 

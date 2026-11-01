@@ -26,7 +26,7 @@ from crewai.tasks.llm_guardrail import LLMGuardrail
 from crewai.utilities.pydantic_schema_utils import generate_model_description
 from crewai_tools import FileReadTool
 
-from compintel import knowledge
+from compintel import knowledge, memory
 from compintel.config import AGENT_LIMITS, LONG_OUTPUT_MAX_TOKENS, embedder_config, get_settings, make_llm
 from compintel.guardrails import (
     NO_RUMOR_AS_FACT,
@@ -134,7 +134,11 @@ class DeepDiveCrew:
     @agent
     def brief_writer(self) -> Agent:
         # FileReadTool reads last week's brief; hooks.file_read_allowlist keeps it under briefs/.
-        return self._agent("brief_writer", tools=[FileReadTool()], llm=self._llm(writer=True))
+        # memory: a read-only slice (earlier weeks' competitor facts, briefs, review lessons), recalled before
+        # each task; read-only, so the writer never saves its drafts as "facts".
+        return self._agent(
+            "brief_writer", tools=[FileReadTool()], llm=self._llm(writer=True), memory=memory.writer_slice()
+        )
 
     def head_of_strategy(self) -> Agent:
         """The custom manager. Deliberately not an @agent: crewai rejects a manager inside `agents`, and a

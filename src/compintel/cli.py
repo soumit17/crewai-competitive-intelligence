@@ -319,6 +319,62 @@ def revise(
 
 
 @app.command()
+def chat(
+    session: str = typer.Option(None, "--session", help="Continue an earlier conversation (its session id)."),
+    ask: str = typer.Option(None, "--ask", help="Ask one question and exit."),
+) -> None:
+    """Live: Ask the Analyst, a conversational Flow over memory and the published briefs. ~$0.002 a turn.
+    Type 'exit' to stop."""
+    import os
+
+    from compintel.config import PROJECT_ROOT
+
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    _bootstrap()
+    os.chdir(PROJECT_ROOT)  # briefs/ is cwd-relative
+    from compintel.chat import AskAnalyst
+    from compintel.cost import get_ledger
+
+    ledger = get_ledger()
+    before = ledger.spent_usd
+    flow = AskAnalyst()
+    while True:
+        message = ask or console.input("[bold]you>[/bold] ").strip()
+        if message.lower() in ("exit", "quit"):
+            break
+        if not message:
+            continue
+        answer = flow.handle_turn(message, session_id=session)
+        session = flow.state.id  # the first turn creates the session; later turns continue it
+        console.print(f"[bold cyan]analyst ({flow.state.last_intent})>[/bold cyan]")
+        console.print(str(answer), markup=False)  # citations like [ShelfMitra-3-3] aren't rich markup
+        if ask or flow.state.ended:
+            break
+    console.print(
+        f"[dim]session {session} (continue: compintel chat --session {session})[/dim]   "
+        f"[yellow]${ledger.spent_usd - before:.6f}, P3 total ${ledger.spent_usd:.6f}[/yellow]"
+    )
+
+
+@app.command(name="memory")
+def memory_cmd(
+    reset: bool = typer.Option(False, "--reset", help="Delete everything in memory (asks first)."),
+) -> None:
+    """What CompIntel remembers: the scope tree of runs/memory, with record counts. $0."""
+    _bootstrap()
+    from compintel import memory
+
+    store = memory.shared()
+    if reset:
+        typer.confirm(f"Delete every memory in {memory.memory_dir()}?", abort=True)
+        store.reset_all()
+        console.print("memory cleared")
+        return
+    console.print(store.tree("/", max_depth=3))
+
+
+@app.command()
 def pending() -> None:
     """Briefs waiting for an async review (`run --review async`). $0."""
     from compintel import review
@@ -373,6 +429,9 @@ def _measure(label: str):
     yield flows.append
     elapsed = time.perf_counter() - started
     crewai_event_bus.flush()
+    from compintel.runtime import restore_std_streams
+
+    restore_std_streams()  # a deep dive can leave sys.stdout on crewai's StringIO (see there)
     _print_week(flows[0], _ledger_rows() - rows_before)
     console.print(
         f"[yellow]{label}: {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "

@@ -54,6 +54,15 @@ def _isolated(tmp_path, monkeypatch):
     from crewai.flow.flow_config import flow_config
 
     flow_config.hitl_provider = None  # process-wide: a test's reviewer must not review the next test's brief
+    from compintel import memory
+    from tests.fakes import memory_llm
+
+    # Memory's own model calls (save analysis, recall, extraction) are scripted too; one store per test.
+    monkeypatch.setattr(memory, "make_llm", lambda **_: memory_llm())
+    memory._shared.cache_clear()
+    # crewai keeps a run's entities in a context variable, and a run that starts with one already set reuses
+    # it: an entity registered outside any run (a memory save's EncodingFlow) would leak into the next one.
+    crewai_event_bus.reset_runtime_state()
     monkeypatch.setenv("P3_RUNS_DIR", str(tmp_path / "runs"))
     get_settings.cache_clear()
     get_ledger.cache_clear()

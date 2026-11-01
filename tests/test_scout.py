@@ -54,10 +54,11 @@ def scout_llm(world):
     return script, ScriptedLLM(Rule(script))
 
 
-def test_scout_sees_all_six_tools_including_mcp(scout_llm):
+def test_scout_sees_all_tools_including_mcp_and_memory(scout_llm):
     script, llm = scout_llm
     asyncio.run(scouting.scout_company("ShelfMitra", 2, llm=llm))
     assert set(llm.calls[0]["tools"]) == {
+        "search_memory",  # added for an agent with memory; no save tool: the scout's view is read-only
         "news_search",
         "read_website_content",
         "pricing_parse",

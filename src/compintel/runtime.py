@@ -19,3 +19,20 @@ def bootstrap() -> None:
     listeners.install()
     hooks.install()
     _done = True
+
+
+def restore_std_streams() -> None:
+    """Put the real stdout/stderr back if a run left them on a StringIO.
+
+    crewai's chromadb client silences queries with `contextlib.redirect_stdout(io.StringIO())`, which swaps
+    the process-wide sys.stdout. The deep dive's parallel analysts query knowledge at the same time, two
+    redirects interleave, and the last one to exit "restores" the other's StringIO: everything printed after
+    the run vanished, exit code 0 (live week 2, M6 and M7). Not thread-safe upstream; repaired here.
+    """
+    import io
+    import sys
+
+    if isinstance(sys.stdout, io.StringIO):
+        sys.stdout = sys.__stdout__
+    if isinstance(sys.stderr, io.StringIO):
+        sys.stderr = sys.__stderr__

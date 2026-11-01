@@ -104,8 +104,9 @@ def resume(location: str | None = None, final: bool = False, fake=None) -> Short
     """Continue a killed run from its last checkpoint: finished tasks are skipped, not re-run.
 
     A restore rebuilds the crew from the snapshot, which does not bring back (crewai docs): callable
-    guardrails, and our LLM objects as configured here; callbacks only with CREWAI_DESERIALIZE_CALLBACKS=1.
-    They are re-attached from a freshly loaded crew. The signal registry is rebuilt from the saved inputs.
+    guardrails, and our LLM objects and memory views as configured here; callbacks only with
+    CREWAI_DESERIALIZE_CALLBACKS=1. They are re-attached from a freshly loaded crew. The signal registry is
+    rebuilt from the saved inputs.
     """
     location = location or latest_checkpoint()
     if location is None:
@@ -117,6 +118,8 @@ def resume(location: str | None = None, final: bool = False, fake=None) -> Short
     fresh_agents = {a.role: a for a in fresh.agents}
     for agent in crew.agents:
         agent.llm = fresh_agents[agent.role].llm
+        # A restored MemorySlice comes back unbound (a live Memory isn't serializable): use a fresh one.
+        agent.memory = fresh_agents[agent.role].memory
     fresh_tasks = {t.name: t for t in fresh.tasks}
     for task in crew.tasks:
         task.guardrails = fresh_tasks[task.name].guardrails  # type: ignore[assignment]

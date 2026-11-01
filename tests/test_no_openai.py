@@ -73,16 +73,18 @@ def test_crewai_storage_is_outside_the_developers_real_data_dir():
     assert not DEFAULT_STORAGE_PATH.startswith(str(Path.home() / ".local" / "share"))
 
 
-def test_review_model_and_flow_memory_are_anthropic_and_local():
+def test_review_model_and_flow_memory_are_anthropic_and_local(monkeypatch):
+    from compintel import config, memory
     from compintel.flow import REVIEW_LLM, CompetitiveIntelFlow
 
-    assert isinstance(
-        REVIEW_LLM, AnthropicCompletion
-    )  # @human_feedback(llm=...): collapse, distill, pre-review
-    memory = CompetitiveIntelFlow().memory  # not the Memory() a Flow builds itself (gpt-5.4-mini + OpenAI)
-    assert memory is not None
-    assert isinstance(memory.llm, AnthropicCompletion)  # type: ignore[union-attr]
-    assert memory.embedder["provider"] != "openai"  # type: ignore[union-attr,index]
+    # @human_feedback(llm=...): collapse, distill, pre-review
+    assert isinstance(REVIEW_LLM, AnthropicCompletion)
+    monkeypatch.setattr(memory, "make_llm", config.make_llm)  # the real one (conftest scripts it)
+    view = CompetitiveIntelFlow().memory  # not the Memory() a Flow builds itself (gpt-5.4-mini + OpenAI)
+    assert view is not None
+    backing = view._memory  # type: ignore[union-attr]  # the /hitl scope's shared Memory
+    assert isinstance(backing.llm, AnthropicCompletion)
+    assert backing.embedder["provider"] != "openai"
 
 
 def test_a_reviewed_week_with_lessons_runs_without_openai(openai_forbidden, world, stubs, monkeypatch):  # noqa: F811

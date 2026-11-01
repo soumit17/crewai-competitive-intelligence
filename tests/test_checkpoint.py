@@ -118,3 +118,43 @@ def test_replay_reruns_from_a_task_with_the_earlier_outputs(hooks_on):
     # classify_signals came from storage: the analyst never ran; the writer wrote again, then rendered.
     assert "Market Analyst" not in [c["role"] for c in second.calls]
     assert result.raw.startswith("# Week 03: Replayed")
+
+
+def test_crew_checkpoints_survive_scouts_and_memory_in_the_same_flow(world):
+    """Inside the weekly Flow a crew checkpoint serializes every entity of the run. A deep recall (RecallFlow)
+    or an agent's own memory save (EncodingFlow) adds one that can't be serialized, and every later checkpoint
+    failed (M7, live). Scouts with their read-only, shallow memory views, then the crew, in one Flow."""
+    import asyncio
+
+    from crewai.events.types.checkpoint_events import CheckpointCompletedEvent, CheckpointFailedEvent
+    from crewai.flow.flow import Flow, listen, start
+
+    from compintel import scouting
+    from compintel.memory import competitor_scope
+    from tests.test_scout import ScriptedScout
+
+    hooks.install()
+    competitor_scope("ShelfMitra").remember(
+        "Week 1: ShelfMitra posted Mumbai hiring.", importance=0.5, categories=["x"]
+    )
+    # That save ran outside any run, so its EncodingFlow stayed in crewai's runtime-state context variable
+    # and the Flow below would inherit it (and fail every checkpoint). In the real Flow saves happen inside.
+    crewai_event_bus.reset_runtime_state()
+    outcomes: list[str] = []
+    crewai_event_bus.on(CheckpointCompletedEvent)(lambda s, e: outcomes.append("ok"))
+    crewai_event_bus.on(CheckpointFailedEvent)(lambda s, e: outcomes.append("failed"))
+
+    class Week(Flow):
+        @start()
+        def scout(self) -> None:
+            asyncio.run(
+                scouting.scout_company("ShelfMitra", 2, llm=ScriptedLLM(Rule(ScriptedScout(world, 2))))
+            )
+
+        @listen(scout)
+        def write(self) -> None:
+            short_update.run(3, REPORTS, fake=ScriptedLLM(Rule(Script([brief()]))))
+
+    Week().kickoff()
+    crewai_event_bus.flush()
+    assert outcomes == ["ok", "ok", "ok"]

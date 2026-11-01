@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M6 (human review: `@human_feedback` with learned lessons, async review across processes) done.
+**Status:** M7 (unified memory with scopes and slices; Ask the Analyst, a conversational Flow) done.
 
 ## Setup
 
@@ -355,11 +355,69 @@ Routes routine → material → routine. M6 live spend $0.14, incl. a repeated w
 
 A refused render doesn't stop the crew: `render_brief` is the task's answer, so the block message becomes the output.
 
+## M7: memory and Ask the Analyst
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run compintel memory` | $0 | The memory tree (`runs/memory`): scopes and record counts |
+| `uv run compintel chat` | ~$0.001 a turn | Ask the Analyst. `--ask "…"` for one question; `--session <id>` continues a conversation |
+| `uv run python scripts/memory_exercises.py` | ~$0.003 | Consolidation, shallow vs deep recall, private memories |
+| `uv run compintel memory --reset` | $0 | Forget everything (asks first) |
+
+### What is remembered, and who sees it
+
+```
+/competitor/<company>   each week's signals ("Week 2: …", with signal id)   written at publish
+/brief/week-NN          facts extracted from the published brief (+ its file)  written at publish
+/hitl                   reviewer lessons (@human_feedback learn=True)          written at review
+```
+
+| Reader | View | Sees |
+|---|---|---|
+| Signal Scout | read-only `MemoryScope` `/competitor/<its company>` | its own competitor's past weeks, recalled before it starts |
+| Brief Writer (both crews) | read-only `MemorySlice` `/competitor` + `/brief` + `/hitl` | earlier weeks, recalled before each task |
+| The Flow's review | `MemoryScope` `/hitl` | lessons only (pre-review, distillation) |
+| Ask the Analyst | read-only `MemorySlice` `/competitor` + `/brief` | facts with their sources |
+
+All recall done by agents is `depth="shallow"`: a vector search ranked by similarity, recency (half-life 14
+days) and importance. Why not crewai's default `"deep"`: see the exercises below and decisions.md (it also broke
+crew checkpoints).
+
+### Ask the Analyst
+
+A conversational Flow (`chat.py`): an LLM router picks `ask_fact` (memory), `compare` (the briefs' threat
+tables), `what_changed` (two briefs side by side), or crewai's built-in `converse` / `end`. Retrieval is code;
+one more model call answers. Sessions persist (`@persist`), so `--session` continues one in a new process.
+
+Live (after weeks 1-3):
+
+> **you>** What did ShelfMitra do in Kolkata and when?
+> **analyst (ask_fact)>** ShelfMitra opened an office in Kolkata's Salt Lake Sector V to serve West Bengal
+> retailers… in week 3 [ShelfMitra-3-3] [briefs/week-03.md]… Week 2: 15 open sales roles: 12 Field Sales
+> Executives [ShelfMitra-2-3]… [briefs/week-02.md]. Week 3: the same openings, unchanged… ($0.0005)
+
+A follow-up in a new process (`--session`), "Compare how its threat level moved against StockSathi's",
+resolved "its" from the stored history and routed to `compare`.
+
+### Exercises (live, `scripts/memory_exercises.py`)
+
+| | Result |
+|---|---|
+| Consolidation | The same pricing fact saved in week 1 and week 3: one consolidation call ($0.0002), one record kept |
+| Recall depth | Short queries: shallow = deep (0.2 s, no LLM call; deep skips analysis under 200 characters). A task-length query: shallow 0.2 s, $0; **deep 23.4 s, 4 LLM calls, $0.0024** |
+| Private | A lesson saved `private=True, source="editor"`: visible to `source="editor"` only |
+
+### Live run (weeks 1-3 rerun with memory, async review)
+
+Routes routine, material, routine. Week 3's "since last week" compares against week 2's published threat
+levels ("StockSathi from high to low…") and knows the Kolkata roles were already open in week 2. Reviewing week 3, I
+corrected BahiBook (high → medium); the revision fixed the table and the since-last-week line. Threat levels
+vs ground truth: 1/3, 3/3, 3/3 after review (2/3 before). Memory after week 3: 99 records (50 competitor
+signals, 46 brief facts, 3 lessons). M7 live spend $0.145 (P3 total $1.34 of $12).
+
 ## Later milestones' commands
 
-| Command | Cost | Milestone |
-|---|---|---|
-| `uv run compintel chat` | cents | M7 |
+M8 adds tracing, evals and `crewai test` / `crewai train`.
 
 ## How one weekly run flows, end to end
 
@@ -369,7 +427,7 @@ only for the fuzzy parts.
 
 ```mermaid
 flowchart TD
-    S([compintel run --week N]) --> L["load_week<br/>recall last week's memory"]
+    S([compintel run --week N]) --> L["load_week<br/>fork last week's state"]
     L --> SA["scout_all<br/>3 Scout agents in parallel"]
     SA --> R{"assess_materiality<br/>(router: mostly code)"}
     R -->|nothing_new| Q[quiet_week]
@@ -389,10 +447,10 @@ flowchart TD
    SQLite DB, and an MCP server with funding + app-rating data. Week 1 is boring, week 2 has material news
    (price cut, Series B, Kolkata hiring), week 3 has one subtle signal and one rumor to discount.
 2. **`load_week`** (`@start`). Flow state (`CIState`) is restored from last week's run with `@persist` +
-   `restore_from_state_id`, so the flow "remembers" last week's threats. It also recalls `/competitor/*` memories.
+   `restore_from_state_id`, so the flow "remembers" last week's threats.
 3. **`scout_all`**. One Scout agent per competitor runs **without a crew** (`Agent.kickoff_async`, all 3 concurrently).
    Each uses tools (scrape, news search, changelog diff, pricing parse, MCP) and must return a typed
-   `SignalReport` (`response_format=`). Each scout can only see its own competitor's memory scope.
+   `SignalReport` (`response_format=`). Each scout reads only its own competitor's memory (earlier weeks).
 4. **`assess_materiality`** (`@router`). A deterministic score over the signals (impact × credibility × novelty)
    picks a label: `nothing_new`, `routine` or `material`. An LLM is called only to break a tie.
    The label *is* the route: listeners subscribed to that string run next.
@@ -437,5 +495,7 @@ Budget cap $12, enforced in code from M0.
 
 ## Resetting local state
 
-`crewai reset-memories -a` clears CrewAI's memory/knowledge stores. `rm -rf runs/` clears flow persistence,
-checkpoints and the cost ledger (don't do this if you want to keep the spend history).
+`uv run compintel memory --reset` clears CompIntel's memory (`runs/memory`). `crewai reset-memories -a` clears
+CrewAI's own default stores (knowledge). `rm -rf runs/` clears flow persistence, checkpoints, memory and the cost
+ledger (don't do this if you want to keep the spend history). Changing the embedder needs a memory reset
+(the stored vectors have the old model's dimensions).

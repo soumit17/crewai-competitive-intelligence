@@ -21,6 +21,7 @@ from crewai_tools import ScrapeWebsiteTool
 
 from compintel import hooks
 from compintel.config import AGENT_LIMITS, LONG_OUTPUT_MAX_TOKENS, get_settings, make_llm
+from compintel.memory import scout_view
 from compintel.models import SignalReport
 from compintel.tools.changelog_diff import ChangelogDiffTool
 from compintel.tools.news_search import NewsSearchTool
@@ -56,7 +57,9 @@ def market_mcp(week: int) -> MCPServerStdio:
     )
 
 
-def make_scout(week: int, llm: BaseLLM | None = None, verbose: bool = False) -> Agent:
+def make_scout(
+    week: int, llm: BaseLLM | None = None, verbose: bool = False, company: str | None = None
+) -> Agent:
     # Fail closed: the scrape tool's SSRF guard is off in compintel runs, so the allowlist hook must be on.
     if not hooks.is_installed(hooks.url_allowlist):
         raise RuntimeError("url_allowlist hook not installed; call compintel.hooks.install() first")
@@ -73,6 +76,10 @@ def make_scout(week: int, llm: BaseLLM | None = None, verbose: bool = False) -> 
         # checkpoints all failed live, with only a logged warning).
         tools=[NewsSearchTool(), ScrapeWebsiteTool(), PricingParseTool(), ChangelogDiffTool()],
         mcps=[market_mcp(week)],
+        # Its competitor's memory only, read-only (spec §11.1, see memory.ReadOnlyScope): crewai recalls from
+        # it before the kickoff, so week 3's scout knows weeks 1-2. No company (the kickoff_for_each demo,
+        # one agent for all three): no memory, or the three would share one scope.
+        memory=scout_view(company) if company else None,
         verbose=verbose,
         **SCOUT_LIMITS,
     )
@@ -102,7 +109,8 @@ Rules:
 - source_ref: the page URL or the news article id. source_credibility: 0.9 for pages and market data,
   the article's credibility for news.
 - An article with credibility below 0.5 is kind "rumor", whatever it claims.
-- novelty: "new" if it appeared this week, "update" if it continues something from earlier weeks.
+- novelty: "new" if it appeared this week, "update" if it continues something from earlier weeks (your
+  memories of earlier weeks, if any, are below).
 - impact_on_us: judge for KiranaCloud (Kolkata stores, ₹799/month, plans GST e-invoicing and UPI credit).
 - Include routine items (bug fixes, blog posts) with impact "none" or "low"; leave out nothing you found.
 - Final answer: only the SignalReport JSON object matching this schema, no prose and no code fences:
@@ -112,7 +120,7 @@ Rules:
 async def scout_company(
     company: str, week: int, llm: BaseLLM | None = None, verbose: bool = False
 ) -> SignalReport:
-    agent = make_scout(week, llm, verbose)
+    agent = make_scout(week, llm, verbose, company=company)
     # kickoff_async: the non-blocking twin of Agent.kickoff, so three scouts can wait on I/O concurrently.
     out = await agent.kickoff_async(scout_prompt(company, week), response_format=SignalReport)
     if not isinstance(out.pydantic, SignalReport):

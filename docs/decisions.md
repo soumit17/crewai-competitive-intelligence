@@ -445,6 +445,74 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   correctly, but its last minute of output (the summary lines) never reached the log. Not reproduced ($0 probe
   of a deep dive + memory exit: clean, exit 0). Runs since then use `PYTHONUNBUFFERED=1` and record exit codes.
 
+## M7 decisions
+
+78. **One shared `Memory` per process** (`memory.shared()`: Haiku, local ONNX embedder, LanceDB `runs/memory`,
+    `recency_half_life_days=14`) and views over it. The module is `memory.py` (spec: `memory_setup.py`).
+79. **Scopes**: `/competitor/<slug>`, `/brief/week-NN`, `/hitl`. No `/company/kiranacloud`: our own docs are
+    knowledge (M4), not memory.
+80. **Scouts read, the Flow writes** (spec: scouts write their own scope). Scouts get a read-only
+    `/competitor/<company>` scope (`ReadOnlyScope`): crewai recalls into the prompt before the kickoff, gives the
+    agent only the recall tool, and the kickoff save finds nothing. `publish` records each signal as
+    `"Week N: <detail>"` with `signal_id`, `source_ref`, `kind`, and importance from `impact_on_us`. Why: an agent's
+    own save runs mid-week and broke every later crew checkpoint (see findings); the Flow's facts are
+    structured (week, id, source) instead of LLM-extracted, and cheaper: the first design's week 1 made 49 calls
+    (M6's week 1: 18); with this one, week 3 made 27 (M6's week 3: 21).
+81. **The Flow's own memory is the `/hitl` scope**, so `learn=True` lessons land there and the pre-review reads
+    only lessons. With an unscoped memory it would have "applied" brief facts as lessons (M6 finding).
+    `publish` uses Flow memory's `extract_memories` for the brief (one call) and saves into `/brief/week-NN`
+    with scope, categories and importance given, so crewai skips its per-fact analysis call.
+82. **Brief Writers** (ShortUpdateCrew via `crew.jsonc` → `crew_refs.writer_memory`; DeepDiveCrew in Python) get a
+    read-only `MemorySlice` over `/competitor`, `/brief`, `/hitl`. No crew-level `memory=`: it would save every
+    task's output (an extraction plus an analysis call per fact) into LLM-chosen scopes, and duplicate what
+    publish stores. The checkpoint resume re-attaches the slice (restored views come back unbound).
+83. **Agents' recall is always `depth="shallow"`** (`ShallowScope` / `ShallowSlice`, a one-line `recall`
+    override): crewai has no setting for the depth an agent recalls with, and deep recall cost 23 s and 4
+    calls per task-length query live, and broke checkpoints. The chat also recalls shallow.
+84. **Ask the Analyst** (`chat.py`): `@ConversationConfig(llm, router=RouterConfig(llm), trace_scope="turn")`,
+    explicit models (left unset the router has none), class-level `@persist()` for sessions, the analyst slice as
+    its memory (not the OpenAI-default one). Routes are `@listen` handlers; the docstrings are the router's
+    catalog. Retrieval is code, then one call (spec: an agent with recall + FileReadTool): 2 calls per turn.
+85. **The Market Analyst gets the long-output budget** too (8192): its ThreatAssessments JSON was truncated at 1500.
+86. **`runtime.restore_std_streams()`** after every CLI run (see findings: stdout race).
+87. **Tests**: conftest scripts Memory's model (`fakes.memory_reply`: analysis, query analysis, consolidation,
+    extraction), clears the shared store per test, and resets crewai's runtime state per test.
+
+## M7 findings
+
+- **A read-only `MemorySlice` ignores writes silently** (`remember` returns None). The spec's "write fails" is a
+  no-op; tests assert nothing was stored.
+- **Slices take scope prefixes, not globs**: `/competitor` covers every company (`/competitor/*` isn't syntax).
+- **Deep recall runs `RecallFlow`, an agent's own memory save runs `EncodingFlow`; both are Flows that join the
+  run's state** with a field crew checkpoints can't serialize (`initial_state`, a class). After the first one,
+  every crew checkpoint in the run failed (only a logged warning). Live M7 week 1 (first design: scouts
+  saved their own memories): 3 of 3 failed. With read-only shallow views: none (regression test runs scouts and
+  the crew in one Flow).
+- **crewai keeps the run's entities in a context variable, and a run that starts with one already set reuses
+  it**: a memory save made outside any run (e.g. in a test, before kickoff) leaks its EncodingFlow into the next
+  run. Tests reset it (`crewai_event_bus.reset_runtime_state()`).
+- **Agent memory**: an agent with `memory=` gets "Search memory" (+ "Save to memory" unless read-only), a recall
+  before every task/kickoff (default deep), and a save after (`extract_memories` = an LLM call, even when the
+  memory is read-only, then `remember_many`). Crew task saves skip read-only memories.
+- **Deep recall only calls the LLM for queries of 200+ characters** (`query_analysis_threshold`) or low
+  confidence; an agent's recall query is its whole task prompt, so always.
+- **Consolidation works as documented**: a near-identical save (≥ 0.85 similarity) costs one call that decides
+  keep / update / delete; live, the repeated pricing fact stayed one record.
+- **Private records**: visible only to recall with the same `source` (or `include_private=True`); confirmed live.
+- **The lost output of deep-dive weeks (M6, and live M7 week 2) is a stdout race**: crewai's chromadb client
+  silences queries with `contextlib.redirect_stdout(io.StringIO())`, which swaps the process-wide `sys.stdout`;
+  the deep dive's parallel analysts query knowledge concurrently, two redirects interleave, and the last exit
+  restores the other's StringIO. Everything printed afterwards vanished, exit code 0. Reproduced with two
+  threads (test in test_cli.py). Probably also the M5 "silent probe exits".
+- **The conversational Flow's router sends a JSON context** (`current_user_message`, history, route catalog)
+  and gets `{"intent": ...}` as structured output; an unknown intent falls back to `converse`.
+- **Rich markup**: an answer citing `[/competitor/shelfmitra]` crashed the CLI print (read as a closing tag).
+  Answers print with `markup=False`; competitor facts cite their signal id.
+- **Live weeks 1-3**: routes as the ground truth; threat levels 1/3, 3/3, 3/3 (week 3 after my review moved
+  BahiBook high → medium). Week 3's since-last-week compares against week 2's threat levels.
+- **Test suite: 162 tests, 64-68 s**, over the spec's 60 s target. The slowest: the cross-process review (7.5 s,
+  a subprocess) and the scout fan-out (5.5 s).
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

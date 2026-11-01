@@ -1,39 +1,37 @@
-# Week 03: ShelfMitra's Bengali beta and Kolkata office make it the top threat [ShelfMitra-3-4][ShelfMitra-3-5]
+# Week 03: ShelfMitra's Kolkata office and Bengali beta make it the top threat this week
 
 *Route: routine*
 
 ## TL;DR
-- ShelfMitra added Bengali language support in beta on 2026-10-20 and opened a Kolkata office in Salt Lake Sector V to serve West Bengal retailers [ShelfMitra-3-4][ShelfMitra-3-5].
-- Its 12 Field Sales Executive, 2 Territory Sales Manager and 1 Regional Sales Head roles in Kolkata are unchanged from week 2 [ShelfMitra-3-6][ShelfMitra-3-7][ShelfMitra-3-8].
-- StockSathi's app-store rating fell from 4.3 to 3.9 across 18,665 reviews, with duplicate UPI Udhaar reminders as the top complaint [StockSathi-3-6].
-- BahiBook opened a Product Manager role for GST e-invoicing in Pune that was not on its week 2 careers page; its prices are unchanged [BahiBook-3-3][BahiBook-3-1].
-- StockSathi shipped a 2026-10-21 fix for duplicate UPI Udhaar reminders; its prices and hiring are unchanged [StockSathi-3-2][StockSathi-3-1][StockSathi-3-3].
+- ShelfMitra opened a Kolkata office for West Bengal retailers [ShelfMitra-3-3] and added Bengali beta support [ShelfMitra-3-2]; its 15 Kolkata sales roles remain open [ShelfMitra-3-6][ShelfMitra-3-7][ShelfMitra-3-8].
+- BahiBook opened a new Pune role for Product Manager, GST e-invoicing [BahiBook-3-1], signalling a move toward GST e-invoicing.
+- StockSathi's app-store rating fell from 4.3 to 3.9 on 18,665 reviews, with the top complaint now duplicate UPI Udhaar reminders [StockSathi-3-4]; a fix shipped 2026-10-21 [StockSathi-3-2].
+- Pricing is unchanged at all three competitors: StockSathi [StockSathi-3-1], ShelfMitra [ShelfMitra-3-1], BahiBook [BahiBook-3-4].
 
 ## Since last week
-- StockSathi's threat falls from high in the week 2 brief to low; its Pro price stays at ₹699 and hiring is unchanged [StockSathi-3-1][StockSathi-3-3].
-- StockSathi's app-store rating fell from 4.3 in week 2 to 3.9 in week 3 [StockSathi-3-6].
-- ShelfMitra's threat stays high; the Bengali beta and the Kolkata office are new this week [ShelfMitra-3-4][ShelfMitra-3-5].
-- BahiBook's threat rises from low in the week 2 brief to medium on a new GST e-invoicing Product Manager opening in Pune [BahiBook-3-3].
-- BahiBook's Solo and Plus prices are unchanged from week 2 [BahiBook-3-1].
+- Threat levels moved: StockSathi from high to low, BahiBook from low to medium, and ShelfMitra stayed high [StockSathi-3-4][StockSathi-3-2][BahiBook-3-1][ShelfMitra-3-3].
+- New: ShelfMitra added Bengali beta support on 2026-10-20 [ShelfMitra-3-2] and opened a Kolkata office [ShelfMitra-3-3].
+- New: BahiBook opened a GST e-invoicing Product Manager role in Pune [BahiBook-3-1] and fixed Devanagari ledger search on 2026-10-22 [BahiBook-3-3].
+- New: StockSathi shipped a fix stopping duplicate UPI Udhaar reminders, dated 2026-10-21 [StockSathi-3-2], after its app-store rating dropped from 4.3 to 3.9 [StockSathi-3-4].
+- Unchanged: all pricing [StockSathi-3-1][ShelfMitra-3-1][BahiBook-3-4]; StockSathi careers page [StockSathi-3-3]; ShelfMitra's Mumbai and Kolkata roles [ShelfMitra-3-4][ShelfMitra-3-5][ShelfMitra-3-6][ShelfMitra-3-7][ShelfMitra-3-8]; BahiBook's Pune Customer Support role [BahiBook-3-2].
 
 ## Threats
 | Competitor | Threat | Why |
 |---|---|---|
-| BahiBook | **medium** | BahiBook opened a Product Manager role for GST e-invoicing in Pune that was not on the week 2 page [BahiBook-3-3], a single opening with no shipped feature yet. Its Devanagari ledger search fix is minor [BahiBook-3-2], its Customer Support opening is unchanged [BahiBook-3-4], and its pricing is unchanged [BahiBook-3-1]. |
-| ShelfMitra | **high** | ShelfMitra launched Bengali language support in beta [ShelfMitra-3-4] and opened a Kolkata office to serve West Bengal retailers [ShelfMitra-3-5], both new, high-impact moves into KiranaCloud's home market. The Kolkata sales hiring [ShelfMitra-3-6][ShelfMitra-3-7][ShelfMitra-3-8] is unchanged from week 2 and is context only, not new evidence. |
-| StockSathi | **low** | Its only new credible item is a minor UPI Udhaar reminder fix [StockSathi-3-2], and its app-store rating fell from 4.3 to 3.9 on the same reminder complaints [StockSathi-3-6]. Pricing and hiring are unchanged [StockSathi-3-1][StockSathi-3-3], and the Mysuru meetup is a low-impact context item [StockSathi-3-5]. |
+| BahiBook | **medium** | A single new open role for Product Manager, GST e-invoicing in Pune [BahiBook-3-1] signals intent, but nothing has shipped yet, so it is rated medium. The Devanagari ledger search fix [BahiBook-3-3] and unchanged pricing [BahiBook-3-4] add no further threat. |
+| ShelfMitra | **high** | Shipped Bengali beta support [ShelfMitra-3-2] and a newly opened Kolkata office serving West Bengal retailers [ShelfMitra-3-3] are launch evidence of a credible move into KiranaCloud's home market. The standing Kolkata sales build-out of 12 Field Sales Executives, 2 Territory Sales Managers and a Regional Sales Head [ShelfMitra-3-6][ShelfMitra-3-7][ShelfMitra-3-8] supports the rating but does not justify it on its own. |
+| StockSathi | **low** | The app-store rating drop to 3.9 [StockSathi-3-4] comes from a UPI Udhaar reminder bug that StockSathi has already patched [StockSathi-3-2]. Pricing and hiring are unchanged [StockSathi-3-1][StockSathi-3-3]. |
 
 ## Recommendations
 | Action | Owner | Urgency | Signals |
 |---|---|---|---|
-| Prioritise retention calls to high-value Kolkata stores before ShelfMitra's 15 open Kolkata sales roles reach them, given its Bengali beta and new office. | Sales | this week | ShelfMitra-3-4, ShelfMitra-3-5, ShelfMitra-3-6, ShelfMitra-3-7, ShelfMitra-3-8 |
-| Assess whether KiranaCloud needs Bengali language support for Kolkata stores this month, since ShelfMitra's Bengali beta is already live. | Product | this month | ShelfMitra-3-4 |
-| Watch StockSathi's rating and whether its 2026-10-21 UPI Udhaar reminder fix reverses the complaints before changing any plan. | Leadership | watch | StockSathi-3-2, StockSathi-3-6 |
+| Assign named reps from the Kolkata team to the accounts most exposed to ShelfMitra's new office, starting with West Bengal retailers. | Sales | this week | ShelfMitra-3-3, ShelfMitra-3-6, ShelfMitra-3-7, ShelfMitra-3-8 |
+| Scope our response to BahiBook's GST e-invoicing hiring by confirming our e-invoicing roadmap date. | Product | this month | BahiBook-3-1 |
+| If the duplicate-reminder fix holds, prepare a switching message for StockSathi users frustrated by duplicate UPI Udhaar reminders. | Marketing | watch | StockSathi-3-4, StockSathi-3-2 |
 
 ## Watchlist
-- BahiBook's new GST e-invoicing Product Manager role in Pune is a single opening that may point to a future feature; nothing has shipped [BahiBook-3-3].
-- StockSathi's blog reports about 80 store owners at a Mysuru kirana owners' feedback meetup (credibility 0.6) [StockSathi-3-5].
-- BahiBook's Devanagari ledger search fix dated 2026-10-22 is minor and low impact [BahiBook-3-2].
+- ShelfMitra-3-2: Bengali support is beta only; watch for general availability.
+- StockSathi-3-6: blog-reported Mysuru feedback meetup with around 80 store owners (credibility 0.6); a possible early sign of a feedback-led push.
 
 ## Discounted claims
-- StockSathi-3-4: unverified Startup Gupshup blog claim, citing unnamed sources, that a large e-commerce player is acquiring StockSathi; no company has confirmed it (credibility 0.2).
+- StockSathi-3-5: unverified Startup Gupshup blog claim (credibility 0.2) that a large e-commerce player is acquiring StockSathi; no company has confirmed it.

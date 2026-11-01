@@ -40,7 +40,7 @@ from crewai.flow.persistence import persist
 
 from compintel import materiality, review
 from compintel.config import LONG_OUTPUT_MAX_TOKENS, PROJECT_ROOT, get_settings, make_llm
-from compintel.memory import hitl_lessons, make_memory
+from compintel.memory import brief_scope, competitor_scope, hitl_lessons, hitl_scope
 from compintel.models import Brief, CIState, ThreatAssessment, TieBreak, WeekSummary
 from compintel.runtime import bootstrap
 from compintel.tools.render_brief import render_markdown
@@ -79,8 +79,10 @@ def _update_index(section: str, week: int, state_id: str | None) -> None:
 @persist()  # class-level: state saved after every method, default SQLiteFlowPersistence (crewai's data dir)
 class CompetitiveIntelFlow(Flow[CIState]):
     def __init__(self, **data: Any) -> None:
-        # Our Memory, not the one a Flow builds for itself (OpenAI LLM + embedder): learn=True needs one.
-        data.setdefault("memory", make_memory())
+        # The Flow's memory is the /hitl scope of our shared Memory (not the OpenAI-default one a Flow builds
+        # itself): @human_feedback(learn=True) saves lessons into it and pre-reviews drafts from it, so brief
+        # facts (/brief) can never be applied as "lessons".
+        data.setdefault("memory", hitl_scope())
         super().__init__(**data)
 
     def kickoff(self, inputs: dict[str, Any] | None = None, **kwargs: Any) -> Any:  # type: ignore[override]
@@ -297,9 +299,40 @@ class CompetitiveIntelFlow(Flow[CIState]):
         md.write_text(self.state.brief_markdown)
         md.with_suffix(".json").write_text(self.state.brief.model_dump_json(indent=2))
         self.state.published_path = str(md)
+        self._remember_signals()
+        self._remember_brief(md)
         _update_index("published", self.state.week, self.state.id)
         _update_index("in_progress", self.state.week, None)
         return str(md)
+
+    def _remember_signals(self) -> None:
+        """This week's signals under /competitor/<company>, for next week's scouts and for Ask the Analyst.
+        Written here, after the crews, not by the scouts (see memory.ReadOnlyScope). Every field is given, so
+        no LLM call unless a fact repeats an earlier one (then one consolidation call: update or keep)."""
+        importance = {"none": 0.2, "low": 0.4, "medium": 0.6, "high": 0.8}
+        for company, report in self.state.reports.items():
+            for s in report.signals:
+                unverified = " (unverified rumor)" if s.source_credibility < 0.5 else ""
+                competitor_scope(company).remember(
+                    f"Week {self.state.week}: {s.detail}{unverified}",
+                    categories=[s.kind],
+                    importance=importance[s.impact_on_us],
+                    metadata={"week": self.state.week, "signal_id": s.id, "source_ref": s.source_ref},
+                    source="scout",
+                )
+
+    def _remember_brief(self, md: Path) -> None:
+        """Flow memory: the published brief's facts under /brief/week-NN, tagged with where they came from so
+        Ask the Analyst can cite the file. extract_memories is one LLM call; scope, categories and importance
+        are given, so crewai skips its per-fact analysis call (it still consolidates near-duplicates)."""
+        facts = self.extract_memories(self.state.brief_markdown)
+        brief_scope(self.state.week).remember_many(
+            facts,
+            categories=["brief"],
+            importance=0.7,
+            metadata={"week": self.state.week, "file": str(md)},
+            source="brief",
+        )
 
     @listen("reject")
     def archive(self) -> str:

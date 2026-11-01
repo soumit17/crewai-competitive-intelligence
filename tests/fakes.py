@@ -203,3 +203,24 @@ FAKE_EMBEDDER_SPEC: dict[str, Any] = {"provider": "custom", "config": {"embeddin
 def text_reply(answer: str) -> Callable[..., str]:
     """ReAct-style final answer, for agents run without a response_model."""
     return lambda *_: f"Thought: I know the answer.\nFinal Answer: {answer}"
+
+
+def memory_reply(messages: list[Any], response_model: Any) -> Any:
+    """What crewai's Memory asks its LLM, answered blandly: save analysis, recall query analysis,
+    consolidation (keep both), fact extraction (one fact per non-empty line of the content)."""
+    name = getattr(response_model, "__name__", "")
+    if name == "MemoryAnalysis":
+        return {"suggested_scope": "/", "categories": ["fact"], "importance": 0.5}
+    if name == "QueryAnalysis":
+        return {"recall_queries": [str(messages[-1]["content"])[:200]]}
+    if name == "ConsolidationPlan":
+        return {"insert_new": True}
+    if name == "ExtractedMemories":
+        text = str(messages[-1]["content"])
+        lines = [ln.strip("-# ").strip() for ln in text.splitlines()]
+        return {"memories": [ln for ln in lines if len(ln) > 20][:8]}
+    return ""
+
+
+def memory_llm() -> ScriptedLLM:
+    return ScriptedLLM(Rule(memory_reply))

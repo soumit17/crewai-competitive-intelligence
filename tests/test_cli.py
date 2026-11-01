@@ -166,3 +166,66 @@ def test_async_review_through_the_cli(world, monkeypatch, tmp_path):
     assert answered.exit_code == 0, answered.output
     assert "published briefs/week-01.md" in answered.output
     assert runner.invoke(app, ["pending"]).output.strip() == "no pending reviews"
+
+
+def test_stdout_left_on_a_stringio_by_overlapping_redirects_is_restored(monkeypatch):
+    """crewai's chromadb query silencing isn't thread-safe: two overlapping redirects can leave sys.stdout on
+    a StringIO, and everything printed after a deep dive vanished (M6/M7 live)."""
+    import io
+    import logging
+    import sys
+    import threading
+
+    from crewai.utilities.logger_utils import suppress_logging
+
+    from compintel.runtime import restore_std_streams
+
+    real = sys.stdout
+    monkeypatch.setattr(sys, "__stdout__", real)  # pytest's capture stands in for the terminal
+    a_in, b_in, a_out = threading.Event(), threading.Event(), threading.Event()
+
+    def first():
+        with suppress_logging("x", logging.ERROR):
+            a_in.set()
+            b_in.wait()
+        a_out.set()
+
+    def second():
+        a_in.wait()
+        with suppress_logging("x", logging.ERROR):
+            b_in.set()
+            a_out.wait()
+
+    threads = [threading.Thread(target=first), threading.Thread(target=second)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert isinstance(sys.stdout, io.StringIO)  # the upstream race
+    restore_std_streams()
+    assert sys.stdout is real
+
+
+def test_chat_command_answers_and_continues_a_session(monkeypatch):
+    from compintel import chat
+    from compintel.chat import AskAnalyst
+    from compintel.memory import brief_scope
+    from tests.test_chat import reply
+
+    monkeypatch.setattr(AskAnalyst, "conversational_config", chat.config(ScriptedLLM(Rule(reply))))
+    brief_scope(3).remember(
+        "ShelfMitra opened a Kolkata office.",
+        metadata={"file": "briefs/week-03.md"},
+        categories=["brief"],
+        importance=0.7,
+    )
+    first = runner.invoke(app, ["chat", "--ask", "When did ShelfMitra open in Kolkata?"])
+    assert first.exit_code == 0, first.output
+    assert "analyst (ask_fact)>" in first.output
+    assert "ShelfMitra opened a Kolkata office. [briefs/week-03.md]" in first.output  # printed, not markup
+    import re
+
+    session = re.search(r"session ([0-9a-f-]{36})", first.output).group(1)  # type: ignore[union-attr]
+    again = runner.invoke(app, ["chat", "--session", session, "--ask", "bye"])
+    assert again.exit_code == 0, again.output
+    assert "analyst (end)>" in again.output and f"session {session}" in again.output

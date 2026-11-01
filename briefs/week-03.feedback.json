@@ -1,16 +1,27 @@
 {
   "week": 3,
-  "state_id": "ac5e2da4-61a8-4d76-ad70-923ed01e59b6",
+  "state_id": "1cd41197-7e97-4703-8d23-30ab2a45de07",
   "reviews": [
     {
       "round": 1,
-      "outcome": "approve",
-      "feedback": "Looks good, approve.",
-      "at": "2026-11-01T15:47:27.127040",
+      "outcome": "revise",
+      "feedback": "BahiBook is medium, not high: one job opening with nothing shipped yet. Fix the threat table and the since-last-week line.",
+      "at": "2026-11-01T16:33:40.424017",
       "metadata": {
         "stage": "editorial"
       },
-      "headline_reviewed": "ShelfMitra's Bengali beta and Kolkata office make it the top threat [ShelfMitra-3-4][ShelfMitra-3-5]",
+      "headline_reviewed": "ShelfMitra's Kolkata office and Bengali support make it the top threat this week",
+      "changed_by_lessons": true
+    },
+    {
+      "round": 2,
+      "outcome": "approve",
+      "feedback": "Approved.",
+      "at": "2026-11-01T16:34:27.898580",
+      "metadata": {
+        "stage": "editorial"
+      },
+      "headline_reviewed": "ShelfMitra's Kolkata office and Bengali beta make it the top threat this week",
       "changed_by_lessons": true
     }
   ]
