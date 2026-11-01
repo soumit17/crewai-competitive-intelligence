@@ -13,6 +13,7 @@ import pytest
 from compintel import materiality
 from compintel.flow import CompetitiveIntelFlow, read_state_index, run_week
 from compintel.models import Brief, Signal, SignalReport, TieBreak
+from tests import hitl
 from tests.fakes import Rule, ScriptedLLM
 
 
@@ -91,7 +92,9 @@ def stubs(monkeypatch):
     monkeypatch.setattr(short_update, "run", run_short)
     monkeypatch.setattr(deep_dive, "run", run_deep)
     monkeypatch.setattr(materiality, "assess", counting_assess)
-    return SimpleNamespace(calls=calls, reports=week_reports)
+    reviewer = hitl.ScriptedReviewer()  # approves every brief (the review loop has its own tests)
+    hitl.install(monkeypatch, reviewer)
+    return SimpleNamespace(calls=calls, reports=week_reports, reviewer=reviewer)
 
 
 def test_three_weeks_route_correctly_through_forks(world, stubs):
@@ -189,5 +192,6 @@ def test_nothing_to_resume_is_an_error(world, stubs):
 def test_plot_draws_every_router_branch(tmp_path):
     html = Path(CompetitiveIntelFlow().plot("flow.html", show=False))
     script = (html.parent / "flow_script.js").read_text()
-    for label in ("nothing_new", "routine", "material", "load_knowledge_digest", "run_deep_dive", "publish"):
+    labels = ("nothing_new", "routine", "material", "load_knowledge_digest", "run_deep_dive", "publish")
+    for label in (*labels, "editorial_review", "approve", "revise", "reject", "revised", "revision_limit"):
         assert label in script

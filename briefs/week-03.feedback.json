@@ -1,0 +1,17 @@
+{
+  "week": 3,
+  "state_id": "ac5e2da4-61a8-4d76-ad70-923ed01e59b6",
+  "reviews": [
+    {
+      "round": 1,
+      "outcome": "approve",
+      "feedback": "Looks good, approve.",
+      "at": "2026-11-01T15:47:27.127040",
+      "metadata": {
+        "stage": "editorial"
+      },
+      "headline_reviewed": "ShelfMitra's Bengali beta and Kolkata office make it the top threat [ShelfMitra-3-4][ShelfMitra-3-5]",
+      "changed_by_lessons": true
+    }
+  ]
+}

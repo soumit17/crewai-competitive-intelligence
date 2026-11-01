@@ -1,26 +1,28 @@
 {
   "week": 2,
-  "headline": "ShelfMitra's Kolkata sales openings and StockSathi's ₹699 Pro with UPI Udhaar raise threat levels this week [ShelfMitra-2-3] [StockSathi-2-1]",
+  "headline": "ShelfMitra's funded Kolkata push is the biggest threat; StockSathi's ₹699 Pro cut follows [ShelfMitra-2-1][StockSathi-2-1]",
   "tl_dr": [
-    "ShelfMitra's reported ₹200 crore Series B and 15 new Kolkata sales openings signal an eastward push into our home market [ShelfMitra-2-2] [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5].",
-    "StockSathi cut Pro from ₹999 to ₹699 (-30%) and bundled UPI Udhaar, store credit with automatic UPI reminders, launched 2026-10-13 [StockSathi-2-1] [StockSathi-2-2].",
-    "ShelfMitra added a bulk GST invoice export that downloads a month of invoices as one ZIP file [ShelfMitra-2-1].",
-    "BahiBook kept pricing unchanged (Solo ₹399, Plus ₹899), shipped only an A5 invoice print fix, and Pune hiring is unchanged [BahiBook-2-1] [BahiBook-2-2] [BahiBook-2-3].",
-    "StockSathi's app rating slipped from 4.4 to 4.3 across 18,469 reviews, with sync delays the top complaint [StockSathi-2-6]."
+    "ShelfMitra raised ₹200 crore to expand into eastern India and opened a new 12-opening Field Sales Executive role in Kolkata [ShelfMitra-2-1][ShelfMitra-2-3].",
+    "ShelfMitra also added a Bulk GST invoice export that downloads a month of invoices as one ZIP [ShelfMitra-2-2].",
+    "StockSathi cut Pro from ₹999 to ₹699 a month, adding UPI Udhaar and 2 devices, which undercuts KiranaCloud's ₹799 Dukaan plan by ₹100 [StockSathi-2-1].",
+    "StockSathi launched UPI Udhaar on 2026-10-13, letting shops give store credit and collect via UPI with automatic reminders [StockSathi-2-2].",
+    "BahiBook's Solo (₹399) and Plus (₹899) prices are unchanged, and its only changelog entry is an A5 invoice print fix [BahiBook-2-1][BahiBook-2-2]."
   ],
   "since_last_week": [
-    "Threat levels moved: ShelfMitra from low to high on new Kolkata hiring and funding [ShelfMitra-2-2] [ShelfMitra-2-3]; BahiBook from medium to low on unchanged pricing [BahiBook-2-1]; StockSathi stays high [StockSathi-2-1].",
-    "StockSathi's Pro plan fell from ₹999 to ₹699 with UPI Udhaar now included; the Pro cut was not in the week 1 brief [StockSathi-2-1] [StockSathi-2-2].",
-    "StockSathi's Basic (₹499) and Business (₹1,999) plans are unchanged [StockSathi-2-3] [StockSathi-2-4].",
-    "ShelfMitra's published prices are unchanged, and its Mumbai Backend Engineer and Product Designer roles remain listed [ShelfMitra-2-8] [ShelfMitra-2-6] [ShelfMitra-2-7].",
-    "StockSathi's careers page is unchanged (2 Android Engineer, 1 Customer Success, Bengaluru) [StockSathi-2-5]; BahiBook's Pune Customer Support opening is unchanged [BahiBook-2-3]."
+    "Week 1 rated StockSathi's ₹499 Basic plan as the headline threat; this week StockSathi's Pro plan was cut to ₹699 with UPI Udhaar added [StockSathi-2-1].",
+    "StockSathi launched UPI Udhaar on 2026-10-13, a feature absent from the week 1 picture [StockSathi-2-2].",
+    "Week 1 rated ShelfMitra low; it is now rated high after the ₹200 crore Series B and the new Kolkata sales roles [ShelfMitra-2-1][ShelfMitra-2-3][ShelfMitra-2-4][ShelfMitra-2-5].",
+    "ShelfMitra added a Bulk GST invoice export on 2026-10-15 [ShelfMitra-2-2].",
+    "BahiBook's pricing is unchanged, and it added an A5 invoice print fix dated 2026-10-14 [BahiBook-2-1][BahiBook-2-2].",
+    "StockSathi's app-store rating fell from 4.4 to 4.3 across 18,469 reviews [StockSathi-2-3]."
   ],
   "threats": [
     {
       "company": "ShelfMitra",
       "threat": "high",
-      "rationale": "Funding plus 15 new Kolkata sales openings point to a direct push into our home market, which raises ShelfMitra from low to high [ShelfMitra-2-2] [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5]. The direct-push reading is an inference from hiring, not a confirmed launch.",
+      "rationale": "A ₹200 crore Series B for eastern expansion and a new 12-opening Field Sales Executive role in Kolkata put funded sales pressure on home accounts [ShelfMitra-2-1][ShelfMitra-2-3]. The Bulk GST invoice export adds compliance appeal [ShelfMitra-2-2], and further Kolkata sales roles were also added [ShelfMitra-2-4][ShelfMitra-2-5].",
       "signal_ids": [
+        "ShelfMitra-2-1",
         "ShelfMitra-2-2",
         "ShelfMitra-2-3",
         "ShelfMitra-2-4",
@@ -30,7 +32,7 @@
     {
       "company": "StockSathi",
       "threat": "high",
-      "rationale": "The Pro cut to ₹699 with UPI Udhaar bundled is the sharpest price and feature move this week [StockSathi-2-1] [StockSathi-2-2]. Our Khata on UPI is not due until Q2 2027, so the feature gap stays open for now.",
+      "rationale": "The Pro cut to ₹699 sits ₹100 below Dukaan and adds UPI Udhaar and 2 devices [StockSathi-2-1]. UPI Udhaar competes directly on store credit collected via UPI [StockSathi-2-2].",
       "signal_ids": [
         "StockSathi-2-1",
         "StockSathi-2-2"
@@ -39,7 +41,7 @@
     {
       "company": "BahiBook",
       "threat": "low",
-      "rationale": "Pricing, Pune hiring, and the changelog are unchanged or minor, with nothing pointing to Kolkata [BahiBook-2-1] [BahiBook-2-2] [BahiBook-2-3].",
+      "rationale": "The Solo ₹399 and Plus ₹899 prices are unchanged, and the only changelog entry is an A5 invoice print fix [BahiBook-2-1][BahiBook-2-2]. No new roles were added this week [BahiBook-2-3].",
       "signal_ids": [
         "BahiBook-2-1",
         "BahiBook-2-2",
@@ -49,7 +51,15 @@
   ],
   "recommendations": [
     {
-      "action": "Decide the response to StockSathi's ₹699 Pro: lead with annual billing (2 months free) and feature value, and do not cut below the ₹649 floor without a board decision.",
+      "action": "Defend Kolkata accounts this week against ShelfMitra's field sales push: prioritise retention calls and renewal offers for high-value Kolkata stores before the new reps reach them.",
+      "owner": "Sales",
+      "urgency": "this_week",
+      "signal_ids": [
+        "ShelfMitra-2-3"
+      ]
+    },
+    {
+      "action": "Decide this week whether to respond to Dukaan's pricing: set a go/no-go on any Pro price move within the ₹649 to ₹699 band before the ₹100 gap is used against KiranaCloud.",
       "owner": "Leadership",
       "urgency": "this_week",
       "signal_ids": [
@@ -57,18 +67,7 @@
       ]
     },
     {
-      "action": "Assign named field reps to our top 200 Kolkata accounts within two weeks, per the defence rule for funded rivals hiring sales staff in Kolkata.",
-      "owner": "Sales",
-      "urgency": "this_week",
-      "signal_ids": [
-        "ShelfMitra-2-2",
-        "ShelfMitra-2-3",
-        "ShelfMitra-2-4",
-        "ShelfMitra-2-5"
-      ]
-    },
-    {
-      "action": "Confirm the Khata on UPI timing against StockSathi's UPI Udhaar and evaluate pulling the Q2 2027 release forward.",
+      "action": "Accelerate Khata on UPI scope this month so KiranaCloud's UPI-linked credit is ready before UPI Udhaar launches, about two quarters out, and overlaps Khata directly.",
       "owner": "Product",
       "urgency": "this_month",
       "signal_ids": [
@@ -77,10 +76,12 @@
     }
   ],
   "watchlist": [
-    "Whether StockSathi's rating drop to 4.3 persists next week, with sync delays as the top complaint [StockSathi-2-6].",
-    "ShelfMitra's bulk GST export may partly overlap with our GST e-invoicing plans; the overlap is unconfirmed [ShelfMitra-2-1].",
-    "BahiBook's free one-hour GSTR-1 webinar for first-time filers, from a blog source with 0.6 credibility [BahiBook-2-4]."
+    "StockSathi's rating dip from 4.4 to 4.3, with the top complaint still 'Occasional sync delays' [StockSathi-2-3].",
+    "The ₹100 Pro gap is 12.5% of Dukaan's ₹799, below the 20% escalation trigger in the battlecard [StockSathi-2-1].",
+    "BahiBook's free one-hour GSTR-1 webinar for first-time filers, a blog announcement with no impact rating [BahiBook-2-4]."
   ],
-  "discounted_claims": [],
+  "discounted_claims": [
+    "None: no signal in this week's set has credibility below 0.5, so no claim is discounted. BahiBook-2-4 (credibility 0.6) is reported as a blog announcement, not as fact."
+  ],
   "route": "material"
 }

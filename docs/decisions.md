@@ -370,6 +370,81 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   (BahiBook low, expected medium). `flow.usage_metrics.successful_requests` equalled the cost ledger's call count in
   every run.
 
+## M6 decisions
+
+66. **The review is `@human_feedback(emit=["approve","revise","reject"], llm=REVIEW_LLM, default_outcome="revise",
+    learn=True, metadata={"stage": "editorial"})`** on `editorial_review`, which listens to
+    `or_(render_draft, "revised")`: the first draft and every revision go through the same step.
+    `default_outcome="revise"` as in the spec: empty feedback is not approval.
+67. **`editorial_review` returns the `Brief`, not its markdown** (spec deviation). With `learn=True` crewai
+    pre-reviews a Pydantic output *as that model* (`llm.call(response_model=Brief)`), so the published .md and
+    .json stay one document. Providers render it for the human (`ConsoleReview` swaps in the markdown).
+68. **`REVIEW_LLM` is an explicit Haiku instance with an 8192-token budget**, built at import: the decorator needs the
+    object at class definition, and the pre-review rewrites a whole Brief. Left unset, crewai would use
+    `create_llm(None)` ($MODEL, else OpenAI). Its config (model + max_tokens) is serialized into a paused review,
+    so a resume in another process uses the same model.
+69. **The revise loop is bounded by a router on the feedback label**: `@router("revise") revise_brief ->
+    Literal["revised", "revision_limit"]`. After `MAX_REVISIONS = 2` revisions, a third "revise" routes to publish
+    with an editor's note quoting the unapplied request. `RevisionCrew` (one Editor, plain-Python crew,
+    `every_claim_cites_signal` guardrail) applies the feedback plus recalled HITL lessons.
+70. **Publish what the human saw**: `publish` takes the Brief from `last_human_feedback.output`, which can differ
+    from what `editorial_review` returned (the pre-review). After an async resume that output is a dict;
+    `review.as_brief()` handles both.
+71. **Quiet weeks skip review** (spec diagram: quiet_week → publish). **Reject** archives to `briefs/rejected/`,
+    clears `in_progress` and publishes nothing, so next week can't fork it: rerun the week.
+72. **Audit log in the state** (`CIState.feedback_log`, written to `briefs/week-NN.feedback.json`), not crewai's
+    `human_feedback_history`: that is a Flow field, not state, so a review resumed in a new process starts it empty.
+    Each entry records `changed_by_lessons` (the pre-review changed the draft).
+73. **Two providers, chosen per run via `flow_config.hitl_provider`**: `ConsoleReview` (crewai's `ConsoleProvider`,
+    shown markdown) and `PendingReview` (writes `runs/pending_reviews/<flow_id>.json`, raises
+    `HumanFeedbackPending`). `compintel pending` / `compintel review <id> "text"` = `Flow.from_pending(id)
+    .resume(text)`. The decorator has no `provider=`, so `crewai run` and tests choose without code changes.
+74. **The Flow gets our `Memory`** (`compintel/memory.py`: Haiku, local ONNX embedder, LanceDB under
+    `runs/memory/`) via an `__init__` default. Lessons need to outlive the process. M7 does memory properly.
+75. **Crew-level HITL** (`human_input=True`) is a flag on RevisionCrew's task, used by `compintel revise
+    --human-input` only; **hook-level HITL** is `hooks.render_gate` (`ctx.request_human_input` at PRE_TOOL_CALL on
+    `render_brief`), opt-in via `compintel brief --render-gate`.
+76. **Scouts use the BaseTool twins** (`PricingParseTool`, `ChangelogDiffTool`), not the `@tool` versions (see
+    findings). The `@tool` versions stay as the decorator demo (tests).
+77. **Tests**: `tests/hitl.py` has a scripted reviewer (a real `HumanFeedbackProvider`) and one scripted model
+    for every call the review makes, matched on crewai's prompt templates and response models (outcome, lessons,
+    pre-review, Memory's analysis). It patches `_resolve_llm_instance` in crewai's runtime and human_feedback
+    modules (`importlib`: `crewai.flow` re-exports the decorator under the module's name). Cross-process resume
+    runs `python -m tests.resume_review` in a subprocess.
+
+## M6 findings
+
+- **Every Flow builds itself a `Memory()` when it has none**, with crewai's OpenAI defaults (gpt-5.4-mini, OpenAI
+  embeddings). Harmless while unused; `learn=True` uses it, so it's now always ours.
+- **`memory.recall(source=...)` does not filter by source** in 1.15.33: it only decides which *private* records
+  are visible. The pre-review therefore applies every memory it recalls, not only HITL lessons (fine while lessons
+  are all there is; M7 must scope them). `hitl_lessons()` filters by `record.source` itself.
+- **The pre-review always recalls with `depth="deep"`**: an LLM query-analysis call per review, even with an empty
+  memory, before any lesson exists.
+- **`kickoff()` returns `HumanFeedbackPending`** (it doesn't raise). crewai persists state + context in the default
+  SQLite (`flow_states.db`, table `pending_feedback`) and clears it when a resume has recorded the answer, before
+  running the listeners. So a resume that fails in a later step (e.g. the revision crew) is no longer pending.
+- **After an async resume the reviewed output is a dict** (restored from JSON), as documented. Confirmed live.
+- **Inside a Flow, a crew checkpoint serializes every entity of the run**, not only the crew: the Flow and every
+  standalone agent (the scouts). The scouts held `@tool` functions, so *every* ShortUpdateCrew checkpoint in a
+  flow run failed, logged only as a warning (`Auto-checkpoint failed`). This was already true in M5's live
+  weeks (the checkpoint tests run the crew alone). Fixed by giving scouts the BaseTool twins; live week 3 then
+  wrote 3 checkpoints, no warning.
+- **A refused `result_as_answer` tool doesn't stop a crew**: `HookAborted` at PRE_TOOL_CALL blocks that call, and
+  since `render_brief` is the task's answer, "Tool execution blocked by hook. Tool: render_brief" *becomes* the
+  task output (and its output file). `hooks.render_refused()` detects it.
+- **A router can listen to a `@human_feedback` outcome, and `or_` can mix a method with a label**, so the revise
+  loop needs no hand-rolled state machine. Methods re-run in the loop (crewai clears the resume flag first).
+- **Live learning loop** (async provider, each answer in a new process): week 1 feedback "Always lead with the
+  single biggest threat to Kolkata, and keep the headline under 15 words" → `revise` → two lessons stored
+  (`source=hitl`, scope `/`, LLM-inferred): "Lead with the single biggest threat to the target market (e.g.,
+  Kolkata) in the headline and summary." and "Keep headlines under 15 words." Week 2's crew headline (19
+  words) reached the reviewer as 15 (`changed_by_lessons: true`); week 3's, 22 → 11. Routes routine → material →
+  routine again; threat levels vs ground truth 1/3, 3/3, 2/3.
+- **One unexplained lost output**: live week 2 (`run --review async`, stdout to a file) paused and saved
+  correctly, but its last minute of output (the summary lines) never reached the log. Not reproduced ($0 probe
+  of a deep dive + memory exit: clean, exit 0). Runs since then use `PYTHONUNBUFFERED=1` and record exit codes.
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

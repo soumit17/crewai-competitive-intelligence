@@ -22,9 +22,9 @@ from crewai_tools import ScrapeWebsiteTool
 from compintel import hooks
 from compintel.config import AGENT_LIMITS, LONG_OUTPUT_MAX_TOKENS, get_settings, make_llm
 from compintel.models import SignalReport
-from compintel.tools.changelog_diff import changelog_diff
+from compintel.tools.changelog_diff import ChangelogDiffTool
 from compintel.tools.news_search import NewsSearchTool
-from compintel.tools.pricing_parse import pricing_parse
+from compintel.tools.pricing_parse import PricingParseTool
 from compintel.world.story import BY_NAME, COMPANIES
 
 SCOUT_ROLE = "Competitive Signal Scout"
@@ -68,7 +68,10 @@ def make_scout(week: int, llm: BaseLLM | None = None, verbose: bool = False) -> 
             "(₹799/month Dukaan plan). You report facts, cite sources, and never present rumors as facts."
         ),
         llm=llm or make_llm(max_tokens=LONG_OUTPUT_MAX_TOKENS),
-        tools=[NewsSearchTool(), ScrapeWebsiteTool(), pricing_parse, changelog_diff],
+        # BaseTool twins, not the @tool versions: inside the Flow every crew checkpoint serializes all of the
+        # run's agents, scouts included, and a @tool's raw function can't be (M6: the ShortUpdateCrew's
+        # checkpoints all failed live, with only a logged warning).
+        tools=[NewsSearchTool(), ScrapeWebsiteTool(), PricingParseTool(), ChangelogDiffTool()],
         mcps=[market_mcp(week)],
         verbose=verbose,
         **SCOUT_LIMITS,

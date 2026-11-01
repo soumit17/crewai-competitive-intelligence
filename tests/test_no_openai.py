@@ -13,6 +13,7 @@ from crewai.utilities.llm_utils import create_llm
 
 from compintel import hello
 from tests.fakes import Rule, ScriptedLLM
+from tests.test_flow import stubs  # noqa: F401 - fixture: scouting and crews stubbed
 
 TAKE = {"company": "StockSathi", "kind": "pricing_change", "impact_on_us": "high", "why": "Undercuts us."}
 
@@ -70,3 +71,26 @@ def test_crewai_storage_is_outside_the_developers_real_data_dir():
 
     assert "compintel-tests" in DEFAULT_STORAGE_PATH
     assert not DEFAULT_STORAGE_PATH.startswith(str(Path.home() / ".local" / "share"))
+
+
+def test_review_model_and_flow_memory_are_anthropic_and_local():
+    from compintel.flow import REVIEW_LLM, CompetitiveIntelFlow
+
+    assert isinstance(
+        REVIEW_LLM, AnthropicCompletion
+    )  # @human_feedback(llm=...): collapse, distill, pre-review
+    memory = CompetitiveIntelFlow().memory  # not the Memory() a Flow builds itself (gpt-5.4-mini + OpenAI)
+    assert memory is not None
+    assert isinstance(memory.llm, AnthropicCompletion)  # type: ignore[union-attr]
+    assert memory.embedder["provider"] != "openai"  # type: ignore[union-attr,index]
+
+
+def test_a_reviewed_week_with_lessons_runs_without_openai(openai_forbidden, world, stubs, monkeypatch):  # noqa: F811
+    from compintel.flow import run_week
+    from tests import hitl
+
+    hitl.install(monkeypatch, hitl.ScriptedReviewer(("Lead with Kolkata.", "revise")))
+    from compintel.crews import revision
+
+    monkeypatch.setattr(revision, "run", lambda brief, *a, **k: brief)
+    assert run_week(1).state.published_path == "briefs/week-01.md"

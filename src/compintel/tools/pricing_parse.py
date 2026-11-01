@@ -1,4 +1,5 @@
-"""PricingParseTool (spec §6): `@tool` decorator (scouts) and a BaseTool twin (checkpointed deep dive).
+"""PricingParseTool (spec §6) twice: the `@tool` decorator version (M2's demo of the decorator) and the
+BaseTool twin every agent uses since M6, because crew checkpoints can't serialize a `@tool`'s function.
 Parsing prices in code beats asking the LLM to read HTML:
 exact numbers, no tokens spent on markup, and the week-over-week diff is computed, not guessed."""
 

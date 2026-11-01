@@ -1,0 +1,28 @@
+{
+  "week": 1,
+  "state_id": "eb883596-ba0a-4f68-9d92-b963568c04bd",
+  "reviews": [
+    {
+      "round": 1,
+      "outcome": "revise",
+      "feedback": "Always lead with the single biggest threat to Kolkata, and keep the headline under 15 words.",
+      "at": "2026-11-01T15:35:11.782780",
+      "metadata": {
+        "stage": "editorial"
+      },
+      "headline_reviewed": "Week 1: StockSathi's ₹499 Basic plan is the main price threat to KiranaCloud's Kolkata base; ShelfMitra and BahiBook pose lower near-term risk.",
+      "changed_by_lessons": false
+    },
+    {
+      "round": 2,
+      "outcome": "approve",
+      "feedback": "Approved, publish it.",
+      "at": "2026-11-01T15:36:06.033186",
+      "metadata": {
+        "stage": "editorial"
+      },
+      "headline_reviewed": "Week 1: StockSathi's ₹499 Basic plan is the biggest Kolkata threat to KiranaCloud",
+      "changed_by_lessons": false
+    }
+  ]
+}

@@ -3,7 +3,7 @@ M5: the Flow's state (CIState) and what it carries from week to week."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -122,5 +122,5 @@ class CIState(BaseModel):
     brief: Brief | None = None
     brief_markdown: str = ""
     revision_count: int = 0  # M6 (human feedback)
-    feedback_log: list[str] = Field(default_factory=list)  # M6
+    feedback_log: list[dict[str, Any]] = Field(default_factory=list)  # M6: one entry per human review
     published_path: str | None = None

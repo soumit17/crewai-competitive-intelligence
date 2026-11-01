@@ -51,6 +51,9 @@ def _isolated(tmp_path, monkeypatch):
     from compintel import runtime
 
     runtime._done = False  # bootstrap() is once per process; tests clear hooks and handlers per test
+    from crewai.flow.flow_config import flow_config
+
+    flow_config.hitl_provider = None  # process-wide: a test's reviewer must not review the next test's brief
     monkeypatch.setenv("P3_RUNS_DIR", str(tmp_path / "runs"))
     get_settings.cache_clear()
     get_ledger.cache_clear()

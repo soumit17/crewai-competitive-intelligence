@@ -159,3 +159,12 @@ def test_crewai_agent_copy_drops_mcps():
     assert scout.mcps
     assert scout.copy().mcps is None
     assert {t.name for t in scout.copy().tools or []} == {t.name for t in scout.tools or []}  # tools survive
+
+
+def test_a_scout_can_be_checkpointed():
+    """A crew checkpoint inside the Flow serializes every agent of the run, scouts included (M6 finding)."""
+    from compintel import hooks
+    from compintel.scouting import make_scout
+
+    hooks.install()
+    make_scout(1).model_dump(mode="json")  # raised on the @tool functions

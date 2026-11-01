@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M5 (the Flow: routing, week-over-week fork, crash-resume, crew checkpointing, replay) done.
+**Status:** M6 (human review: `@human_feedback` with learned lessons, async review across processes) done.
 
 ## Setup
 
@@ -294,10 +294,66 @@ scout_all ─────┴ and_ → assess_materiality (@router: nothing_new |
 ### Checkpointing and replay
 
 - **ShortUpdateCrew** checkpoints after every task (`runs/checkpoints/short_update.db`); `short_update.resume()`
-  continues a killed run, and the finished tasks aren't re-run (tested: one model call on resume).
+  continues a killed run, and the finished tasks aren't re-run (tested: one model call on resume). Inside the
+  Flow this silently failed until M6 (see decisions.md, M6 findings): the M5 live weeks wrote no crew checkpoints.
 - **DeepDiveCrew can't be checkpointed** in crewai 1.15.33: a snapshot fails while any agent executor is mid-run,
   and this crew always has one. A test fails when upstream fixes it.
 - **`crewai replay -t <task_id>`** works for whichever crew ran last (the `replay` script picks it).
+
+## M6: human review
+
+Every crew-written brief now waits for a human before it's published.
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run compintel run --week N` | as in M5, + ~$0.001 per review | Reviews in the terminal: you see the rendered brief and type free text |
+| `uv run compintel run --week N --review async` | same | Pauses at the review and exits. The brief waits in `runs/pending_reviews/` |
+| `uv run compintel pending` | $0 | What's waiting, with the brief |
+| `uv run compintel review <flow_id> "your feedback"` | ~$0.0003 approve, ~$0.004 revise | Continues the week *in this process*; a revise pauses again for the next round |
+| `uv run compintel revise --week N "feedback" --human-input` | ~$0.005/round | Crew-level HITL for comparison: crewai asks for more rounds on the console |
+| `uv run compintel brief --week N --render-gate` | ~$0.005 | Hook-level HITL: a yes/no before the writer renders |
+
+### What the review does
+
+```
+render_draft ─┐
+"revised" ────┴→ editorial_review  (@human_feedback: your text → approve | revise | reject, by Haiku)
+                    ├ approve → publish   (what you saw, incl. lessons applied)
+                    ├ revise  → revise_brief (@router) ─ "revised" → back to review (RevisionCrew)
+                    │                                 └ "revision_limit" (3rd revise) → publish + editor's note
+                    └ reject  → archive   (briefs/rejected/; nothing published, rerun the week)
+```
+
+- **Your words, not buttons**: "Looks good" → approve; "lead with Kolkata" → revise. Empty = revise (silence
+  isn't approval).
+- **Lessons (`learn=True`)**: feedback that asks for a change is distilled into general lessons in memory. Next
+  time, *before* you see a draft, crewai rewrites it with those lessons. `briefs/drafts/week-NN.crew.md` is the
+  crew's version; diff it with `briefs/week-NN.md`.
+- **Audit**: `briefs/week-NN.feedback.json`, one entry per review round (outcome, your words, whether lessons
+  changed the draft).
+
+### Live run (Haiku 5.5, async review, each answer in a new process)
+
+| Week | Review | What happened |
+|---|---|---|
+| 1 | revise → approve | "Always lead with the single biggest threat to Kolkata, and keep the headline under 15 words" became 2 lessons; the Editor revised; approved |
+| 2 | approve | Crew headline 19 words → reviewer saw 15, biggest threat first (`changed_by_lessons: true`) |
+| 3 | approve | Crew headline 22 words → 11 |
+
+Routes routine → material → routine. M6 live spend $0.14, incl. a repeated week 1 and probes (P3 total $1.19 of $12).
+
+### Three ways to put a human in the loop
+
+| | `@human_feedback` (Flow) | `human_input=True` (crew task) | `ctx.request_human_input` (hook) |
+|---|---|---|---|
+| Where | between Flow steps | inside one task, after the agent's answer | inside the agent loop, before a tool call |
+| Human says | free text → routed outcome | free text → the agent tries again | yes / no |
+| Routing | approve / revise / reject branches | none (same task until you press Enter) | none (block one tool call) |
+| Learns | yes (`learn=True`) | no | no |
+| Async (answer later, other process) | yes (provider + `HumanFeedbackPending`) | no, blocks the terminal | no, blocks the terminal |
+| Here | the weekly review | `compintel revise --human-input` | `compintel brief --render-gate` |
+
+A refused render doesn't stop the crew: `render_brief` is the task's answer, so the block message becomes the output.
 
 ## Later milestones' commands
 
@@ -345,8 +401,8 @@ flowchart TD
      then writes a short `Brief`.
    - *material* → **DeepDiveCrew**: hierarchical. A "Head of Strategy" manager agent delegates pricing, product
      and market analyses (run in parallel), then synthesis. An escalation memo runs **only if** a threat is high
-     (`ConditionalTask`), then the final `Brief`. It reads KiranaCloud's own docs as **knowledge**, and it
-     checkpoints after each task, so a crash resumes without redoing finished tasks.
+     (`ConditionalTask`), then the final `Brief`. It reads KiranaCloud's own docs as **knowledge**.
+     (The routine crew checkpoints after each task; this one can't, see M5.)
    - Every brief passes **guardrails** before it's accepted: every claim cites a signal ID (code check), no
      low-credibility claim stated as fact (LLM-checked rule), and length. A failure auto-retries the task.
 6. **`editorial_review`** (`@human_feedback`). The flow pauses and shows *you* the draft. You type free text.

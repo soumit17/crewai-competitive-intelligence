@@ -104,6 +104,7 @@ def test_brief_command_needs_scout_reports_first():
 
 
 def test_run_command_runs_a_week_through_the_flow(world, monkeypatch, tmp_path):
+    """Also the blocking console review: ConsoleReview shows the rendered brief and reads stdin."""
     from compintel import config
     from tests.test_flow import WEEKS, brief_for
 
@@ -120,8 +121,48 @@ def test_run_command_runs_a_week_through_the_flow(world, monkeypatch, tmp_path):
     monkeypatch.setattr(
         short_update, "run", lambda week, reports, **k: SimpleNamespace(brief=brief_for(week, "routine"))
     )
-    result = runner.invoke(app, ["run", "--week", "1"])
+    from tests import hitl
+
+    hitl.install(monkeypatch, hitl.ScriptedReviewer())  # the review model; the reviewer is you, on stdin
+    result = runner.invoke(app, ["run", "--week", "1"], input="Approved, looks good.\n")
     assert result.exit_code == 0, result.output
+    assert "OUTPUT FOR REVIEW" in result.output and "# Week 01: Week 1" in result.output  # rendered, not repr
     assert "route routine" in result.output and "published briefs/week-01.md" in result.output
+    assert "review 1: approve ← 'Approved, looks good.'" in result.output
     assert "flow.usage_metrics:" in result.output
     assert (tmp_path / "briefs" / "week-01.md").exists()
+
+
+def test_async_review_through_the_cli(world, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from compintel import config, scouting
+    from compintel.crews import short_update
+    from tests import hitl
+    from tests.test_flow import WEEKS, brief_for
+
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+
+    async def scout_all(week, llm=None, verbose=False):
+        return WEEKS[week]
+
+    monkeypatch.setattr(scouting, "scout_all", scout_all)
+    monkeypatch.setattr(
+        short_update, "run", lambda week, reports, **k: SimpleNamespace(brief=brief_for(week, "routine"))
+    )
+    hitl.install(monkeypatch, hitl.ScriptedReviewer())
+    paused = runner.invoke(app, ["run", "--week", "1", "--review", "async"])
+    assert paused.exit_code == 0, paused.output
+    assert "paused for review" in paused.output and not (tmp_path / "briefs" / "week-01.md").exists()
+
+    from compintel import review
+
+    [waiting] = review.list_pending()
+    flow_id = waiting["flow_id"]
+    listed = runner.invoke(app, ["pending"])
+    assert flow_id in listed.output and "# Week 01: Week 1" in listed.output
+
+    answered = runner.invoke(app, ["review", flow_id, "Approved, looks good."])
+    assert answered.exit_code == 0, answered.output
+    assert "published briefs/week-01.md" in answered.output
+    assert runner.invoke(app, ["pending"]).output.strip() == "no pending reviews"

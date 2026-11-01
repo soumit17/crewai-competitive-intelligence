@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from contextlib import contextmanager
 
 import typer
 from rich.console import Console
@@ -123,6 +124,9 @@ def scout(
 def brief(
     week: int = typer.Option(..., "--week", min=1, max=3, help="Week to write the routine brief for."),
     final: bool = typer.Option(False, "--final", help="Brief Writer on MODEL_FINAL (Sonnet)."),
+    render_gate: bool = typer.Option(
+        False, "--render-gate", help="Ask before the writer renders (hook-based HITL, spec §10.3)."
+    ),
 ) -> None:
     """Live: run ShortUpdateCrew on saved scout reports (runs/scout/week-N.agents.json). ~$0.005 on Haiku."""
     import os
@@ -143,6 +147,10 @@ def brief(
     from compintel.crews import short_update
     from compintel.listeners import GuardrailLog
 
+    if render_gate:
+        from compintel import hooks
+
+        hooks.install_render_gate()
     log = GuardrailLog()
     ledger = get_ledger()
     before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
@@ -245,8 +253,14 @@ def run(
     resume: bool = typer.Option(
         False, "--resume", help="Resume this week's crashed run instead of starting over."
     ),
+    review_mode: str = typer.Option(
+        "console",
+        "--review",
+        help="console: review in this terminal (blocking). async: pause, answer with `compintel review`.",
+    ),
 ) -> None:
-    """Live: the whole week through the Flow (scout, route, crew, publish). Weeks 2+ fork the week before."""
+    """Live: the whole week through the Flow (scout, route, crew, review, publish). Weeks 2+ fork the week
+    before."""
     import os
 
     from compintel.config import PROJECT_ROOT
@@ -256,38 +270,144 @@ def run(
     _require_fakeweb()
     _bootstrap()
     os.chdir(PROJECT_ROOT)  # briefs/ and the crews' output paths are cwd-relative
+    from compintel import review
+    from compintel.flow import run_week
+
+    if review_mode not in ("console", "async"):
+        raise typer.BadParameter("--review must be console or async")
+    reviewer = review.PendingReview() if review_mode == "async" else review.ConsoleReview()
+    with _measure(f"week {week}") as done:
+        flow = run_week(week, deep_dive_variant=variant, resume=resume, reviewer=reviewer)
+        done(flow)
+
+
+@app.command()
+def revise(
+    week: int = typer.Option(..., "--week", min=1, max=3, help="Published week whose brief to revise."),
+    feedback: str = typer.Argument(..., help="What to change."),
+    human_input: bool = typer.Option(
+        False, "--human-input", help="Task human_input=True: crewai asks you for more rounds (spec §10.3)."
+    ),
+) -> None:
+    """Live: RevisionCrew alone on a published brief, printed, not published. Crew-level HITL to compare with
+    the Flow's @human_feedback review. ~$0.005."""
+    import os
+
+    from compintel.config import PROJECT_ROOT
+
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    _bootstrap()
+    os.chdir(PROJECT_ROOT)
+    from crewai.flow.persistence import SQLiteFlowPersistence
+
+    from compintel.crews import revision, short_update
+    from compintel.flow import read_state_index
+    from compintel.models import CIState
+    from compintel.tools.render_brief import render_markdown
+
+    state_id = read_state_index()["published"].get(str(week))
+    data = SQLiteFlowPersistence().load_state(state_id) if state_id else None
+    if not data:
+        raise typer.BadParameter(f"week {week} isn't published; run it first")
+    state = CIState.model_validate(data)
+    assert state.brief is not None
+    revised = revision.run(
+        state.brief, feedback, [], short_update.signals_input(state.reports), human_input=human_input
+    )
+    console.print(render_markdown(revised))
+
+
+@app.command()
+def pending() -> None:
+    """Briefs waiting for an async review (`run --review async`). $0."""
+    from compintel import review
+
+    waiting = review.list_pending()
+    if not waiting:
+        console.print("no pending reviews")
+    for p in waiting:
+        console.print(f"[bold]week {p['week']}[/bold]  {p['flow_id']}  (since {p['requested_at'][:19]})")
+        console.print(p["markdown"])
+        console.print(f'[dim]{p["message"]}  →  compintel review {p["flow_id"]} "<your feedback>"[/dim]\n')
+
+
+@app.command(name="review")
+def review_cmd(
+    flow_id: str = typer.Argument(..., help="From `compintel pending`."),
+    feedback: str = typer.Argument(
+        "", help="Free text; mapped to approve / revise / reject. Empty = revise."
+    ),
+) -> None:
+    """Live: answer a pending review; the week continues in this process (revise → another pending review)."""
+    import os
+
+    from compintel.config import PROJECT_ROOT
+
+    if not get_settings().anthropic_api_key:
+        raise typer.BadParameter("ANTHROPIC_API_KEY is not set; put it in .env")
+    _bootstrap()
+    os.chdir(PROJECT_ROOT)
+    from compintel import review
+
+    with _measure("review") as done:
+        try:
+            flow, _ = review.resume(flow_id, feedback)
+        except ValueError as e:
+            raise typer.BadParameter(str(e)) from e
+        done(flow)
+
+
+@contextmanager
+def _measure(label: str):
+    """Time and cost a Flow run, then print its outcome; the body hands over the flow with `done(flow)`."""
     import time
 
     from crewai.events.event_bus import crewai_event_bus
 
     from compintel.cost import get_ledger
-    from compintel.flow import run_week
 
     ledger = get_ledger()
     before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
-    flow = run_week(week, deep_dive_variant=variant, resume=resume)
+    flows: list = []
+    yield flows.append
     elapsed = time.perf_counter() - started
     crewai_event_bus.flush()
+    _print_week(flows[0], _ledger_rows() - rows_before)
+    console.print(
+        f"[yellow]{label}: {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "
+        f"[yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
+    )
+
+
+def _print_week(flow, calls: int) -> None:
+    from compintel.flow import is_paused
+
     s = flow.state
-    console.print(s.brief_markdown)
+    if is_paused(flow):
+        console.print(
+            f"[bold yellow]paused for review[/bold yellow]: compintel pending · compintel review {s.id}"
+        )
+    elif s.published_path:
+        console.print(s.brief_markdown)
+        console.print(f"published {s.published_path} (reviews: briefs/week-{s.week:02d}.feedback.json)")
+    else:
+        console.print(f"[red]rejected[/red]: archived in briefs/rejected/week-{s.week:02d}.md")
     console.print(
         f"[bold]route[/bold] {s.route} (score {s.materiality_score}): {'; '.join(s.materiality_reasons)}"
     )
     console.print(
         f"state id {s.id}" + (f", forked from {s.previous_state_id}" if s.previous_state_id else "")
     )
-    console.print(f"published {s.published_path}")
+    for r in s.feedback_log:
+        lessons = " [lessons applied before review]" if r["changed_by_lessons"] else ""
+        console.print(f"review {r['round']}: {r['outcome']} ← {r['feedback']!r}{lessons}")
     # flow.usage_metrics: every LLM call in the run, all crews included (a crew's kickoff().token_usage
-    # isn't).
+    # isn't). After a resumed review it covers this process only.
     usage = flow.usage_metrics
-    calls = _ledger_rows() - rows_before
     console.print(
         f"flow.usage_metrics: {usage.total_tokens:,} tokens in {usage.successful_requests} requests "
         f"(cost ledger: {calls} calls)"
-    )
-    console.print(
-        f"[yellow]week {week}: {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "
-        f"[yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
     )
 
 

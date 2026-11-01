@@ -1,0 +1,17 @@
+{
+  "week": 2,
+  "state_id": "362fe327-343b-4f9f-8aaa-3581bf7ec917",
+  "reviews": [
+    {
+      "round": 1,
+      "outcome": "approve",
+      "feedback": "Approved.",
+      "at": "2026-11-01T15:43:58.933308",
+      "metadata": {
+        "stage": "editorial"
+      },
+      "headline_reviewed": "ShelfMitra's funded Kolkata push is the biggest threat; StockSathi's ₹699 Pro cut follows [ShelfMitra-2-1][StockSathi-2-1]",
+      "changed_by_lessons": true
+    }
+  ]
+}

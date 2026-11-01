@@ -1,4 +1,5 @@
-"""`@on` execution hooks (spec §12.1). M0: budget gate. M2: URL allowlist. M3: file allowlist. M8: the rest.
+"""`@on` execution hooks (spec §12.1). M0: budget gate. M2: URL allowlist. M3: file allowlist.
+M6: render gate. M8: the rest.
 
 Hooks *control* (listeners only observe). Only `HookAborted` stops a run: any other exception raised in
 a hook is swallowed (fail-open), so a buggy hook can't crash a run but also can't protect it.
@@ -18,7 +19,8 @@ from compintel.cost import get_ledger
 
 # crewai sanitizes tool names before matching `tools=` filters: "Read website content" -> this.
 SCRAPE_TOOL = "read_website_content"
-FILE_READ_TOOL = "read_a_files_content"  # crewai-tools' FileReadTool ("Read a file's content")
+FILE_READ_TOOL = "read_a_files_content"
+RENDER_TOOL = "render_brief"  # crewai-tools' FileReadTool ("Read a file's content")
 READABLE_DIR = Path("briefs")  # cwd-relative, like the briefs the crews write
 
 
@@ -71,6 +73,33 @@ def file_read_allowlist(ctx) -> None:
         raise HookAborted(
             reason=f"File not allowed: {raw!r} (only under {READABLE_DIR}/)", source="file-allowlist"
         )
+
+
+def render_gate(ctx) -> None:
+    """Hook-based HITL (spec §10.3, the third pattern): ask a human before the writer renders the brief.
+
+    Unlike @human_feedback it sits inside a crew's agent loop, can only say yes or no (no routing, no
+    lessons, no async pause), and blocks the terminal. Opt-in: `compintel brief --render-gate`.
+
+    A refusal blocks that one tool call, it doesn't stop the crew: render_brief is `result_as_answer`, so
+    crewai makes the block message ("Tool execution blocked by hook...") the task's final answer, and the
+    render task's output file gets that text. Check with `render_refused()`.
+    """
+    week = (ctx.tool_input or {}).get("week", "?")
+    answer = ctx.request_human_input(
+        prompt=f"The Brief Writer wants to render week {week}'s brief.",
+        default_message="Press Enter to allow, or type 'no' to stop the crew:",
+    )
+    if answer.strip().lower() in ("no", "n", "stop"):
+        raise HookAborted(reason=f"render of week {week} refused by the reviewer", source="render-gate")
+
+
+def render_refused(markdown: str) -> bool:
+    return markdown.startswith("Tool execution blocked by hook")
+
+
+def install_render_gate() -> None:
+    on(InterceptionPoint.PRE_TOOL_CALL, tools=[RENDER_TOOL])(render_gate)
 
 
 def is_installed(hook) -> bool:

@@ -1,4 +1,5 @@
-"""ChangelogDiffTool (spec §6): `@tool` decorator (scouts) and a BaseTool twin (checkpointed deep dive).
+"""ChangelogDiffTool (spec §6): a `@tool` version (the decorator demo) and the BaseTool twin agents use (M6:
+crew checkpoints can't serialize a `@tool`'s function).
 Diffs this week's changelog page against last week's so the
 agent gets only what's new, not a page of history it would have to compare itself."""
 
