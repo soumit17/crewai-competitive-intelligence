@@ -260,6 +260,32 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 49. **`validate_deep_dive_inputs` crew-scoped hook** (§12.1) is left for M8 with the rest of the hook set;
     `checkpoint=CheckpointConfig(...)` (§8.3) for M5; `memory=` for M7.
 
+50. **Haiku 5.5 registered for native structured outputs** (`compintel/compat.py`, decided with the developer after
+    the developer's own sequential run printed the errors). crewai 1.15.33 lists `claude-sonnet-5` but not
+    `claude-haiku-5` in `NATIVE_STRUCTURED_OUTPUT_MODELS`, so Haiku got the forced-`structured_output`-tool
+    fallback. On crewai's nested planning models it failed intermittently: `StepObservation` fields came back wrapped
+    in an extra key (`observation`, `input`, `parameters`, ...), `ThreatAssessments.threats` as a JSON string. A live
+    probe showed Haiku 5.5 accepts the native path. The shim adds the prefix inside `make_llm`;
+    `test_upstream_still_lacks_haiku_5` fails when crewai adds it, so the shim can be deleted.
+51. **Agent-planning loops bounded**: `max_replans=1`, `max_step_iterations=3` on both `PlanningConfig`s (spec sets only
+    effort/attempts/steps; defaults are 3 replans and 15 iterations per step, and the agent's `max_iter` doesn't
+    apply to plan steps). With observations working after #50, the Strategist made 144 calls in 9 minutes, still
+    running, before a timeout stopped it ($0.17).
+52. **The first M4 comparison was confounded, and the errors were hidden by me**: `process_comparison.py` was run
+    with stderr sent to /dev/null. Every Strategist step observation had failed, and crewai's fallback (despite the
+    log text "Defaulting to conservative replan") returns "step succeeded, no replan", which kept the loop short.
+    `listeners.FailureLog` now counts `LLMCallFailedEvent` and `StepObservationFailedEvent`; the CLI and the
+    comparison report them, and comparison runs keep stderr in a log.
+
+53. **Hierarchical variants also clear `task.tools`.** A `Task` built with an agent copies that agent's tools into
+    `task.tools` (crewai `task.py`, "if not self.tools and self.agent and self.agent.tools"), and in a hierarchical
+    crew the manager is handed the task's tools next to its delegation tools. Clearing only `task.agent` left the
+    specialists' tools on the tasks, so in every hierarchical run before this fix the manager called
+    `pricing_parse` / `changelog_diff` / `news_search` itself and never delegated (crewai's own `task.delegations`
+    was 0; a tally of tool events showed the manager's tool calls). The earlier conclusion "Haiku managers don't
+    delegate" was wrong: they had the work tools in hand. Tests now require that a manager is offered exactly
+    the two delegation tools (verified to fail without the fix).
+
 ## M4 findings
 
 - **Hierarchical execution**: `_get_agent_to_use` returns the manager for every task; delegation tools are injected
@@ -269,9 +295,10 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 - **Crew planning**: one "Task Execution Planner" call returns `PlannerTaskPydanticOutput` (one plan per task number),
   appended to each task description. Live it was the single biggest call (~28k in / 8k out, $0.004-0.007).
 - **Agent planning (`PlanningConfig`)**: with `llm=None` it falls back to the agent's own LLM (not OpenAI). It turns
-  one task into a plan/execute/observe loop: 34 Market Analyst and 19 Strategist calls in the sequential run.
+  one task into a plan/execute/observe loop; bound it with `max_replans` / `max_step_iterations` (#51).
 - **Knowledge retrieval costs an LLM call per task**: "rewrite the user query" turns the task prompt into a search query.
-- **Live comparison**: see docs/process-comparison.md. Neither manager delegated in three hierarchical runs.
+- **Live comparison** (after #50-#53): same quality and cost across the three variants; managers delegate the tool-backed
+  analyses and do the rest themselves; `sequential` fastest. See docs/process-comparison.md.
 
 ## Open questions for the developer
 

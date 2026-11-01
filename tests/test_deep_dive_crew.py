@@ -81,6 +81,11 @@ def test_models_planning_knowledge_and_limits_come_from_config(on):
     strategist, market = agents["Strategist"].planning_config, agents["Market Analyst"].planning_config
     assert (strategist.reasoning_effort, strategist.max_attempts, strategist.max_steps) == ("medium", 2, 6)  # type: ignore[union-attr]
     assert (market.reasoning_effort, market.max_attempts) == ("low", 1)  # type: ignore[union-attr]
+    for plan in (
+        strategist,
+        market,
+    ):  # the loop bounds the spec leaves at their defaults (3 replans, 15 iterations)
+        assert (plan.max_replans, plan.max_step_iterations) == (1, 3)  # type: ignore[union-attr]
     assert strategist.llm.model == "claude-haiku-5-5"  # type: ignore[union-attr]
     assert agents["Pricing Analyst"].knowledge_sources[0].file_paths == [
         get_settings().p3_knowledge_dir / knowledge.PRICING
@@ -96,6 +101,7 @@ def test_hierarchical_variants_let_the_manager_choose(on, variant):
     crew = base.crew()
     assert crew.process == Process.hierarchical
     assert all(t.agent is None for t in crew.tasks)  # the manager decides who does what
+    assert all(not t.tools for t in crew.tasks)  # ...and only through delegation, not the specialists' tools
     assert not any(t.async_execution for t in crew.tasks)  # one manager executor: no concurrency
     assert base.intended_agents["write_brief"] == "Brief Writer"
     if variant == "manager_agent":
@@ -154,7 +160,7 @@ def test_manager_delegates_every_task_through_crewais_tool(on, variant):
     # manager that never delegates (as Haiku didn't, live) chose not to; it wasn't unable to.
     manager_tools = [c["tools"] for c in llm.calls if c["role"] == manager]
     assert manager_tools and all(
-        {"delegate_work_to_coworker", "ask_question_to_coworker"} <= set(t) for t in manager_tools
+        set(t) == {"delegate_work_to_coworker", "ask_question_to_coworker"} for t in manager_tools
     )
 
 

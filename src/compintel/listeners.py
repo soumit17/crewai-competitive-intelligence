@@ -13,7 +13,9 @@ from typing import Any
 
 from crewai.events import BaseEventListener, LLMCallCompletedEvent
 from crewai.events.event_bus import CrewAIEventsBus
+from crewai.events.types.llm_events import LLMCallFailedEvent
 from crewai.events.types.llm_guardrail_events import LLMGuardrailCompletedEvent
+from crewai.events.types.observation_events import StepObservationFailedEvent
 from crewai.events.types.tool_usage_events import ToolUsageStartedEvent
 from rich.console import Console
 
@@ -90,6 +92,26 @@ class DelegationLog(BaseEventListener):
                     "task": event.task_name,
                 }
             )
+
+
+class FailureLog(BaseEventListener):
+    """Failures crewai recovers from by itself, so a run still "succeeds": failed LLM calls (e.g. a structured
+    reply that didn't validate) and failed agent-planning step observations (crewai then assumes the step
+    succeeded). Counted so they can't hide in a log stream again (they did in the first M4 comparison)."""
+
+    def __init__(self) -> None:
+        self.llm_call_failures: list[str] = []
+        self.observation_failures: list[str] = []
+        super().__init__()
+
+    def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
+        @crewai_event_bus.on(LLMCallFailedEvent)
+        def on_llm_failed(source: Any, event: LLMCallFailedEvent) -> None:
+            self.llm_call_failures.append(f"{event.agent_role}: {event.error[:200]}")
+
+        @crewai_event_bus.on(StepObservationFailedEvent)
+        def on_observation_failed(source: Any, event: StepObservationFailedEvent) -> None:
+            self.observation_failures.append(f"{event.agent_role}: {event.error[:200]}")
 
 
 def install() -> CostListener:

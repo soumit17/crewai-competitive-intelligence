@@ -108,16 +108,26 @@ class DeepDiveCrew:
         return self._agent(
             "market_analyst",
             tools=[NewsSearchTool()],
-            planning_config=PlanningConfig(reasoning_effort="low", max_attempts=1, llm=self._llm()),
+            planning_config=PlanningConfig(
+                reasoning_effort="low", max_attempts=1, max_replans=1, max_step_iterations=3, llm=self._llm()
+            ),
         )
 
     @agent
     def strategist(self) -> Agent:
-        # Agent planning with review: plan, execute, observe, replan; bounded by attempts and steps (spec §7).
+        # Agent planning with review: plan, execute, observe each step, replan (spec §7: medium, 2 attempts,
+        # 6 steps). The spec's bounds don't cap the loop: max_replans (default 3) and max_step_iterations
+        # (default 15 per step) do, and the agent's max_iter doesn't apply to plan steps. Live, with step
+        # observations working, the Strategist made 144 calls and was still going after 9 minutes.
         return self._agent(
             "strategist",
             planning_config=PlanningConfig(
-                reasoning_effort="medium", max_attempts=2, max_steps=6, llm=self._llm()
+                reasoning_effort="medium",
+                max_attempts=2,
+                max_steps=6,
+                max_replans=1,
+                max_step_iterations=3,
+                llm=self._llm(),
             ),
         )
 
@@ -241,6 +251,10 @@ class DeepDiveCrew:
             self.intended_agents = {t.name: t.agent.role for t in self.tasks if t.agent}
             for t in self.tasks:
                 t.agent = None
+                # A Task built with an agent copies that agent's tools into task.tools (crewai task.py), and
+                # the manager is handed the task's tools next to its delegation tools. Left in place, the
+                # manager called pricing_parse / changelog_diff / news_search itself, never delegating (live).
+                t.tools = []
                 # crewai 1.15.33: every hierarchical task runs on the one manager agent, whose single
                 # executor refuses concurrent use ("Executor is already running"); with knowledge on, the
                 # same collision ended the process silently. So the three analyses only run in parallel in

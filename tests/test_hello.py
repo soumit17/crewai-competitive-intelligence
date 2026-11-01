@@ -46,3 +46,19 @@ def test_embedder_is_local(monkeypatch):
 
     monkeypatch.setattr(config, "_embedder_override", None)  # the real config, not conftest's test fake
     assert embedder_config() == {"provider": "onnx", "config": {}}
+
+
+def test_haiku_5_gets_native_structured_outputs():
+    from crewai.llms.providers.anthropic.completion import _supports_native_structured_outputs
+
+    make_llm()  # applies the compat shim
+    assert _supports_native_structured_outputs("claude-haiku-5-5")
+    assert _supports_native_structured_outputs("claude-sonnet-5-5")  # upstream's own entry, untouched
+
+
+def test_upstream_still_lacks_haiku_5():
+    """When this fails, crewai lists Haiku 5 itself: delete compintel/compat.py's shim and this test."""
+    from compintel import compat
+
+    make_llm()
+    assert compat.UPSTREAM_HAS_HAIKU_5 is False

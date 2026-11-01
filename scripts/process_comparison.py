@@ -30,7 +30,7 @@ def measure(variant: str) -> dict:
     from compintel import hooks, listeners
     from compintel.cost import get_ledger
     from compintel.crews import deep_dive
-    from compintel.listeners import DelegationLog, GuardrailLog
+    from compintel.listeners import DelegationLog, FailureLog, GuardrailLog
     from compintel.models import SignalReport
     from compintel.tools.render_brief import draft_path
     from compintel.world.ground_truth import check_brief
@@ -42,7 +42,14 @@ def measure(variant: str) -> dict:
     reports = {c: SignalReport.model_validate(r) for c, r in json.loads(scout_file.read_text()).items()}
     ledger = get_ledger()
     before_rows = len(ledger.path.read_text().splitlines()) if ledger.path.exists() else 0
-    guard_log, deleg_log = GuardrailLog(), DelegationLog()
+    guard_log, deleg_log, failures = GuardrailLog(), DelegationLog(), FailureLog()
+    from crewai.events.types.tool_usage_events import ToolUsageStartedEvent
+
+    tool_calls: Counter = Counter()
+
+    @crewai_event_bus.on(ToolUsageStartedEvent)
+    def count_tools(source, event) -> None:  # every tool call, by agent: what the agents actually did
+        tool_calls[f"{event.agent_role}: {event.tool_name}"] += 1
 
     started = time.perf_counter()
     error = None
@@ -77,10 +84,15 @@ def measure(variant: str) -> dict:
         "specialist_calls": sum(n for role, n in by_role.items() if role in SPECIALISTS),
         "manager_calls": sum(n for role, n in by_role.items() if role in MANAGERS),
         "delegations": deleg_log.entries,
+        "tool_calls": dict(tool_calls),
+        "task_delegations": {t.name: t.delegations for t in result.crew.tasks} if result else {},
+        # Per task: did the manager hand it to the specialist the YAML intended for *that* task?
         "delegated_to_intended": sum(
-            1 for e in deleg_log.entries if e["coworker"] and e["coworker"] in intended.values()
+            1 for e in deleg_log.entries if e["coworker"] == intended.get(e["task"])
         ),
         "guardrail_failures": [e["name"][:40] for e in guard_log.entries if not e["passed"]],
+        "llm_call_failures": failures.llm_call_failures,
+        "observation_failures": failures.observation_failures,
         "escalation_ran": bool(result and result.escalation_memo),
         "quality": check_brief(result.brief, reports, 2) if result else None,
     }
@@ -112,6 +124,8 @@ def report() -> None:
         ("Specialist calls", lambda d: str(d["specialist_calls"])),
         ("Delegations (to intended agent)", delegations),
         ("Guardrail failures", lambda d: str(len(d["guardrail_failures"]))),
+        ("Recovered LLM call failures", lambda d: str(len(d.get("llm_call_failures", [])))),
+        ("Failed planning observations", lambda d: str(len(d.get("observation_failures", [])))),
         ("Escalation memo ran", lambda d: "yes" if d["escalation_ran"] else "no"),
         ("Material signals cited", lambda d: quality(d, "material_cited")),
         ("Threat levels vs ground truth", lambda d: f"{quality(d, 'threat_levels_match')}/3"),

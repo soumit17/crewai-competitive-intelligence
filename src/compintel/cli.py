@@ -205,11 +205,11 @@ def deepdive(
 
     from compintel.cost import get_ledger
     from compintel.crews import deep_dive
-    from compintel.listeners import DelegationLog, GuardrailLog
+    from compintel.listeners import DelegationLog, FailureLog, GuardrailLog
     from compintel.tools.render_brief import render_markdown
     from compintel.world.ground_truth import check_brief
 
-    guard_log, deleg_log = GuardrailLog(), DelegationLog()
+    guard_log, deleg_log, failures = GuardrailLog(), DelegationLog(), FailureLog()
     ledger = get_ledger()
     before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
     result = deep_dive.run(week, reports, variant=variant, final=final, verbose=verbose)
@@ -229,6 +229,10 @@ def deepdive(
     for e in deleg_log.entries:
         console.print(f"delegation: {e['by']} → {e['kind']} → {e['coworker']}")
     console.print(f"ground truth: {check_brief(result.brief, reports, week)}")
+    console.print(
+        f"recovered failures: {len(failures.llm_call_failures)} LLM calls, "
+        f"{len(failures.observation_failures)} planning step observations"
+    )
     console.print(
         f"[yellow]{variant}: {_ledger_rows() - rows_before} LLM calls, {elapsed:.1f}s, "
         f"${ledger.spent_usd - before:.6f}[/yellow]   [yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"

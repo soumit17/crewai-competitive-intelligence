@@ -209,10 +209,10 @@ cost on repeats. Both variants under-rate ShelfMitra in week 2. Week 2 goes to t
 
 | Command | Cost | What to look at |
 |---|---|---|
-| `uv run compintel deepdive --week 2` | ~$0.03, ~3 min | Hierarchical, Head of Strategy as manager. Prints the brief, escalation memo, guardrails, delegations, a ground-truth check |
-| `uv run compintel deepdive --week 2 --variant sequential` | ~$0.07, ~6 min | Each task on its specialist; the three analyses in parallel |
+| `uv run compintel deepdive --week 2` | ~$0.04, ~5 min | Hierarchical, Head of Strategy as manager. Prints the brief, escalation memo, guardrails, delegations, a ground-truth check |
+| `uv run compintel deepdive --week 2 --variant sequential` | ~$0.04, ~3.5 min | Each task on its specialist; the three analyses in parallel |
 | `uv run compintel deepdive --week 2 --variant manager_llm` | ~$0.03 | crewai's generic manager built from `manager_llm` |
-| `uv run python scripts/process_comparison.py --variant <v>` then `--report` | ~$0.03-0.07 each | Writes [docs/process-comparison.md](docs/process-comparison.md) |
+| `uv run python scripts/process_comparison.py --variant <v>` then `--report` | ~$0.04 each | Writes [docs/process-comparison.md](docs/process-comparison.md) |
 
 Needs `runs/scout/week-2.agents.json` and the fake web server (the analysts' tools). The first live run
 downloads the ONNX embedding model (~80 MB).
@@ -244,11 +244,12 @@ the prompt into a search query before retrieving.
 
 ### The process comparison, in one paragraph
 
-On Haiku 5.5 **neither manager ever delegated**, in three live hierarchical runs, although both were offered the
-delegation tools on every call. So "hierarchical" ran as one generalist with all the context: $0.026-0.033 and
-~3 min, against $0.067 and ~6 min for `sequential`, where the specialists' agent planning (`PlanningConfig`) made
-most of the calls. All three cited 4/4 material signals and led with Kolkata; `sequential` and `manager_llm` got
-all three threat levels right. Full table and discussion: [docs/process-comparison.md](docs/process-comparison.md).
+All three variants produced the same quality (4/4 material signals, 3/3 threat levels, Kolkata first) for
+$0.033-0.042. The managers delegated only the two tool-backed analyses to their specialists and did the rest
+themselves; `sequential` was fastest because its analyses run in parallel, which crewai's hierarchical process
+can't. Verdict: for a fixed pipeline like this one, the explicit sequential process is the better default.
+Full table, discussion, and the two mistakes that made earlier versions of the table wrong:
+[docs/process-comparison.md](docs/process-comparison.md).
 
 ## Later milestones' commands
 

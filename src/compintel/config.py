@@ -83,6 +83,9 @@ def make_llm(final: bool = False, max_tokens: int | None = None) -> LLM:
     """
     from crewai import LLM
 
+    from compintel.compat import register_native_structured_outputs
+
+    register_native_structured_outputs()  # Haiku 5.5: schema-guaranteed structured output (see compat.py)
     s = get_settings()
     return LLM(model=model_id(final), max_tokens=max_tokens or s.max_tokens)
 
