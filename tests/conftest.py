@@ -39,9 +39,10 @@ from compintel.cost import get_ledger  # noqa: E402
 def _isolated(tmp_path, monkeypatch):
     # Crews write cwd-relative briefs/ (crewai's output_file can't be made absolute from inputs): run in tmp.
     monkeypatch.chdir(tmp_path)
-    from compintel import guardrails
+    from compintel import guardrails, hooks
 
     guardrails.reset()
+    hooks.step_trace.reset()  # process-wide, like the guardrails' signal registry
     from crewai.state import checkpoint_listener
 
     # crewai registers its checkpoint handlers once per process, lazily; the per-test handler scope below

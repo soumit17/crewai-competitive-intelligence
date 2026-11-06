@@ -258,6 +258,9 @@ def run(
         "--review",
         help="console: review in this terminal (blocking). async: pause, answer with `compintel review`.",
     ),
+    live: bool = typer.Option(
+        None, "--live/--no-live", help="Live status panel on stderr (default: on in a terminal)."
+    ),
 ) -> None:
     """Live: the whole week through the Flow (scout, route, crew, review, publish). Weeks 2+ fork the week
     before."""
@@ -276,7 +279,7 @@ def run(
     if review_mode not in ("console", "async"):
         raise typer.BadParameter("--review must be console or async")
     reviewer = review.PendingReview() if review_mode == "async" else review.ConsoleReview()
-    with _measure(f"week {week}") as done:
+    with _measure(f"week {week}", live=live) as done:
         flow = run_week(week, deep_dive_variant=variant, resume=resume, reviewer=reviewer)
         done(flow)
 
@@ -394,6 +397,9 @@ def review_cmd(
     feedback: str = typer.Argument(
         "", help="Free text; mapped to approve / revise / reject. Empty = revise."
     ),
+    live: bool = typer.Option(
+        None, "--live/--no-live", help="Live status panel on stderr (default: on in a terminal)."
+    ),
 ) -> None:
     """Live: answer a pending review; the week continues in this process (revise → another pending review)."""
     import os
@@ -406,7 +412,7 @@ def review_cmd(
     os.chdir(PROJECT_ROOT)
     from compintel import review
 
-    with _measure("review") as done:
+    with _measure("review", live=live) as done:
         try:
             flow, _ = review.resume(flow_id, feedback)
         except ValueError as e:
@@ -415,28 +421,54 @@ def review_cmd(
 
 
 @contextmanager
-def _measure(label: str):
-    """Time and cost a Flow run, then print its outcome; the body hands over the flow with `done(flow)`."""
+def _measure(label: str, live: bool | None = None):
+    """Time and cost a Flow run, then print its outcome; the body hands over the flow with `done(flow)`.
+
+    `live`: show the RunMonitor's live panel while the run lasts (None: only when stderr is a terminal)."""
+    import sys
     import time
+    from contextlib import nullcontext
 
     from crewai.events.event_bus import crewai_event_bus
 
+    from compintel import hooks, listeners
     from compintel.cost import get_ledger
 
     ledger = get_ledger()
     before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
+    steps_before = len(hooks.step_trace.entries)
+    monitor = listeners.monitor()
+    show_live = (sys.stderr.isatty() if live is None else live) and monitor is not None
     flows: list = []
-    yield flows.append
+    with listeners.LiveConsole(monitor) if show_live and monitor else nullcontext():
+        yield flows.append
+        crewai_event_bus.flush()  # let the last events reach the panel before it closes
     elapsed = time.perf_counter() - started
-    crewai_event_bus.flush()
     from compintel.runtime import restore_std_streams
 
     restore_std_streams()  # a deep dive can leave sys.stdout on crewai's StringIO (see there)
     _print_week(flows[0], _ledger_rows() - rows_before)
+    _print_observed(monitor, hooks.step_trace.entries[steps_before:])
     console.print(
         f"[yellow]{label}: {elapsed:.1f}s, ${ledger.spent_usd - before:.6f}[/yellow]   "
         f"[yellow]P3 total:[/yellow] ${ledger.spent_usd:.6f}"
     )
+
+
+def _print_observed(monitor, steps: list[dict]) -> None:
+    """What the hooks did and where the time went (from RunMonitor and step_tracer)."""
+    if monitor is not None:
+        h = monitor.hook_summary()
+        console.print(
+            f"[bold]hooks[/bold] {h.get('dispatched', 0)} dispatches: {h.get('proceeded', 0)} proceeded, "
+            f"{h.get('modified', 0)} modified, {h.get('aborted', 0)} aborted"
+        )
+        for line in monitor.hook_aborts:
+            console.print(f"  [red]abort[/red] {line}")
+    timed = sorted((s for s in steps if s["seconds"] is not None), key=lambda s: -s["seconds"])
+    if timed:
+        slowest = ", ".join(f"{s['step']} {s['seconds']:.0f}s" for s in timed[:4])
+        console.print(f"[bold]steps[/bold] {len(steps)} traced (runs/steps.jsonl); slowest: {slowest}")
 
 
 def _print_week(flow, calls: int) -> None:

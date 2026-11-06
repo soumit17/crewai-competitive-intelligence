@@ -513,6 +513,65 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 - **Test suite: 162 tests, 64-68 s**, over the spec's 60 s target. The slowest: the cross-process review (7.5 s,
   a subprocess) and the scout fan-out (5.5 s).
 
+## M8a decisions (hooks, RunMonitor, live console)
+
+88. **The full §12.1 hook set** in `hooks.py`: `budget_gate` (now at `EXECUTION_START` *and* `PRE_MODEL_CALL`),
+    `iteration_guard` (`PRE_MODEL_CALL`, > 12), `redact_secrets` (`POST_MODEL_CALL`, replace), `step_tracer`
+    (`PRE_STEP` + `POST_STEP` → `runs/steps.jsonl`), `inputs_defaults` (`INPUT`), plus the M2/M3/M6 ones.
+    The crew-scoped `validate_deep_dive_inputs` lives on `DeepDiveCrew`.
+89. **`budget_gate` registered twice** (spec: `EXECUTION_START` only). `EXECUTION_START` refuses to start a crew
+    or flow over the cap (zero model calls); `PRE_MODEL_CALL` still covers `Agent.kickoff` (no execution
+    boundary: the scouts) and a run that crosses the cap midway.
+90. **`iteration_guard` is a backstop, not a limit**: our agents stop at `max_iter=8`. It catches agents crewai
+    builds itself: the `manager_llm` variant's generic manager has crewai's default `max_iter=25`.
+91. **`redact_secrets` scrubs key shapes** (Anthropic, `sk-…`, AWS access key ids, bearer tokens) and the
+    literal value of `ANTHROPIC_API_KEY`; returns `None` when there's nothing to scrub, so the dispatch reads
+    "proceeded", not "modified".
+92. **`step_tracer` pairs two hooks**: `StepContext` carries no timing, so `PRE_STEP` stamps a start keyed by
+    (kind, step name, owning task/flow object). Both return `None`: at the step points a non-None return
+    *replaces* the step's input or output.
+93. **`inputs_defaults`**: `currency="INR"` for crews only (a Flow's inputs become fields of its typed state);
+    a week outside (1, 2, 3) aborts before any model call; inputs without a week (chat) pass.
+94. **`validate_deep_dive_inputs`** checks week + non-empty signals with ids, once per kickoff, before the deep
+    dive's first paid call. While the inputs are bad, *every* call of the crew is refused (parallel analyses
+    start together), matched by crew, or by agent for direct calls (knowledge-query rewrites have no crew).
+    The planner runs outside the crew and isn't covered (one cheap call).
+95. **`RunMonitor`** (`listeners.py`) subscribes to every family §12.3 lists: flow method started/finished/failed,
+    task started/completed/failed, tool started/finished/error, LLM call completed, guardrail completed, memory
+    save/query completed/failed, human feedback requested/received, `HookDispatchedEvent`. Counts + a 200-line
+    timeline; it never changes anything. Installed once per process by `listeners.install()`.
+96. **Live console** (`LiveConsole`): a rich `Live` panel on stderr fed by `RunMonitor.render`, with permanent
+    lines above it (finished steps and tasks, guardrail retries, tool errors, hook aborts). On by default for
+    `compintel run` / `review` when stderr is a terminal (`--no-live` turns it off). `ConsoleReview` pauses it
+    around crewai's `input()`. After the run the CLI prints a hooks line and the slowest steps.
+97. **Streaming (`--stream`, spec §15) moves to M8b** with tracing.
+
+## M8a findings
+
+- **"Crew-scoped" `@on` hooks aren't scoped** (crewai 1.15.33, `project/crew_base.py`): an `@on` method on a
+  `@CrewBase` class is registered into the *global* hook list when the crew object is created, and never
+  removed. A second crew in the same process (the Flow's ShortUpdateCrew, the RevisionCrew, another deep dive in
+  `process_comparison.py`) would run it too. The hook checks the call belongs to its own crew, and
+  `save_outputs` unregisters it (`instance._registered_hook_functions`).
+- **An `INPUT` hook that adds a key breaks crew checkpoint resume.** A resumed crew kicks off with empty inputs
+  (the saved ones are restored separately), and crewai skips re-interpolating task templates only *because*
+  they're empty (`task.py`: `if not inputs: return`). Add `currency` and it interpolates `{week}` from
+  `{"currency": "INR"}`: `Template variable 'week' not found`. `inputs_defaults` skips crews with a
+  `checkpoint_kickoff_event_id`. Caught by the M5 resume test.
+- **`HookDispatchedEvent` is one per dispatch, not per hook**: it says which point and the outcome
+  (proceeded / modified / aborted), the abort source and reason, but not which hook modified something.
+- **Human-feedback events come from the provider, not the Flow**, when a provider is installed: crewai's
+  `ConsoleProvider` emits `HumanFeedbackRequestedEvent` / `ReceivedEvent` (the latter with `outcome=None`,
+  before the answer is mapped); the Flow emits them only on its own no-provider path. Our async `PendingReview`
+  emits neither, so async reviews don't show in the timeline.
+- **The hook system fails open**: an exception other than `HookAborted` in a hook is printed (yellow) and
+  ignored. A `POST_MODEL_CALL` hook doesn't see structured tool-call payloads (crewai skips them; they'd be
+  mistaken for a final answer), only text and Pydantic answers.
+- **Live panel and listener locks**: event handlers run on crewai's thread pool while rich's refresh thread
+  calls the render function. Printing a line from inside the monitor's lock while the panel redraws (which
+  takes the same lock) can deadlock; lines are queued and printed after the lock is released.
+- **Test suite: 189 tests, ~66 s.**
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

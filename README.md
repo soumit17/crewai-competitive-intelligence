@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M7 (unified memory with scopes and slices; Ask the Analyst, a conversational Flow) done.
+**Status:** M8a (the full hook set, RunMonitor and a live console) done; M8b–d (tracing, evals, training) next.
 
 ## Setup
 
@@ -415,9 +415,69 @@ corrected BahiBook (high → medium); the revision fixed the table and the since
 vs ground truth: 1/3, 3/3, 3/3 after review (2/3 before). Memory after week 3: 99 records (50 competitor
 signals, 46 brief facts, 3 lessons). M7 live spend $0.145 (P3 total $1.34 of $12).
 
+## M8a: hooks and the live console
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run pytest tests/test_observability.py -v` | $0 | Every new hook, unit cases and inside a scripted run |
+| `uv run compintel run --week 1` | ~$0.015 | The live panel (stderr) while it runs; afterwards a `hooks` line and the slowest `steps` |
+| `uv run compintel run --week 1 --no-live` | ~$0.015 | Same run, plain output (what a log file would get) |
+| `tail runs/steps.jsonl` | $0 | One row per task and flow method, with its duration (the `step_tracer` hook) |
+
+### Every hook, and where it sits
+
+| Hook | Point | Does |
+|---|---|---|
+| `budget_gate` | `EXECUTION_START` + `PRE_MODEL_CALL` | Refuses to start a crew/flow, or make a call, once spend ≥ the $12 cap |
+| `iteration_guard` | `PRE_MODEL_CALL` | Ends a run whose agent passes 12 iterations (backstop for crewai's own `max_iter=25` manager) |
+| `redact_secrets` | `POST_MODEL_CALL` | Returns the response with API keys / tokens replaced by `[REDACTED]` (replace semantics) |
+| `url_allowlist` / `file_read_allowlist` | `PRE_TOOL_CALL`, one tool each | Scrapes only `127.0.0.1:8765`; file reads only under `briefs/` |
+| `step_tracer` | `PRE_STEP` + `POST_STEP` | Times every task and flow method into `runs/steps.jsonl` |
+| `inputs_defaults` | `INPUT` | `currency="INR"` for crews; a week outside 1–3 aborts before anything runs |
+| `validate_deep_dive_inputs` | `PRE_MODEL_CALL`, on `DeepDiveCrew` only | No deep-dive model call without a valid week and signals |
+| `render_gate` (opt-in) | `PRE_TOOL_CALL` | `compintel brief --render-gate`: a yes/no before rendering (M6) |
+
+Three rules explain most of what hooks do here:
+
+1. **Only `HookAborted` stops anything.** Any other exception in a hook is printed and ignored (fail-open).
+2. **Where you abort decides how much stops.** At `PRE_TOOL_CALL` only that tool call is blocked (the agent
+   reads "blocked by hook" and carries on). At `PRE_MODEL_CALL`, `INPUT` or `EXECUTION_START` the run ends.
+3. **Return values replace things.** A string from a `POST_MODEL_CALL` hook becomes the model's answer; any
+   non-None return at the step or input points replaces the task output or the inputs. Hooks that only look
+   (`step_tracer`) return `None`.
+
+**Crew-scoped hooks, in practice.** An `@on` method on a `@CrewBase` class is crewai's crew-scoped hook, but in
+1.15.33 it is registered *globally* when the crew object is created, and never removed. So
+`validate_deep_dive_inputs` checks the call belongs to its own crew, and the crew unregisters it when it
+finishes (decisions.md, M8a findings).
+
+### Hooks control, listeners watch
+
+`RunMonitor` (`listeners.py`) is a `BaseEventListener` on every event family the spec lists: flow methods,
+tasks, tools, LLM calls, guardrails, memory, human feedback and `HookDispatchedEvent` (one per dispatch, with
+its outcome and any abort reason). It only counts and remembers; it can't change a run. It drives the live
+panel:
+
+```
+✓ step load_week
+  ✓ task classify_signals (Market Analyst)
+╭──────────────────────────── compintel ────────────────────────────╮
+│ flow step   run_short_update                                      │
+│ tasks       write_short_brief                                     │
+│ agent       Brief Writer                                          │
+│ tools       9 calls, 2 cached, 0 errors · last: render_brief      │
+│ guardrails  4 passed, 0 sent back                                 │
+│ memory      0 saved, 6 recalls                                    │
+│ hooks       118 dispatches, 0 modified, 0 aborted                 │
+│ LLM         14 calls · P3 $1.3612 of $12.00 · 52s                 │
+╰───────────────────────────────────────────────────────────────────╯
+```
+
+The panel goes away while you type a console review, and when the run ends.
+
 ## Later milestones' commands
 
-M8 adds tracing, evals and `crewai test` / `crewai train`.
+M8b adds streaming and tracing (Phoenix), M8c the eval harness, M8d `crewai test` / `crewai train`.
 
 ## How one weekly run flows, end to end
 
@@ -488,7 +548,7 @@ ShelfMitra do in Kolkata and when?" from memory and past briefs.
 | M5 | The Flow, persistence, checkpointing, replay | $1.20 |
 | M6 | Human feedback (blocking, async, learn) | $1.00 |
 | M7 | Unified memory + Ask the Analyst chat | $1.20 |
-| M8 | Full hooks, tracing, evals, `crewai test/train` | $3.00 |
+| M8 | Full hooks + live console (M8a), tracing (M8b), evals (M8c), `crewai test/train` (M8d) | $3.00 |
 | M9 | Polish & retrospective | $0.30 |
 
 Budget cap $12, enforced in code from M0.

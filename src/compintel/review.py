@@ -32,7 +32,10 @@ def as_brief(output: Any) -> Brief:
 class ConsoleReview(ConsoleProvider):
     def request_feedback(self, context: PendingFeedbackContext, flow: Any) -> str:
         shown = dataclasses.replace(context, method_output=render_markdown(as_brief(context.method_output)))
-        return super().request_feedback(shown, flow)
+        from compintel.listeners import live_paused
+
+        with live_paused():  # take the live panel down while the reviewer reads and types
+            return super().request_feedback(shown, flow)
 
 
 def pending_dir() -> Path:

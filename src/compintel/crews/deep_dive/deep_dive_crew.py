@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from crewai import Agent, Crew, CrewOutput, PlanningConfig, Process, Task
+from crewai.hooks import HookAborted, InterceptionPoint, on
+from crewai.hooks.dispatch import unregister
 from crewai.project import CrewBase, after_kickoff, agent, before_kickoff, crew, task
 from crewai.tasks.conditional_task import ConditionalTask
 from crewai.tasks.llm_guardrail import LLMGuardrail
@@ -43,6 +45,7 @@ from compintel.tools.changelog_diff import ChangelogDiffTool
 from compintel.tools.news_search import NewsSearchTool
 from compintel.tools.pricing_parse import PricingParseTool
 from compintel.tools.render_brief import draft_path, render_markdown
+from compintel.world.story import WEEKS
 
 VARIANTS = ("sequential", "manager_llm", "manager_agent")
 
@@ -67,6 +70,9 @@ class DeepDiveCrew:
         if variant not in VARIANTS:
             raise ValueError(f"variant must be one of {VARIANTS}")
         self.variant, self.final, self.fake, self.verbose = variant, final, fake, verbose
+        self._crew_obj: Crew | None = None
+        self._inputs: dict[str, Any] = {}
+        self._input_problems: list[str] | None = None  # None: not checked yet this kickoff
 
     def _llm(self, writer: bool = False) -> Any:
         # Every answer here is a whole analysis or document: the long-output budget (config.py).
@@ -215,6 +221,7 @@ class DeepDiveCrew:
         inputs.setdefault("brief_schema", _schema(Brief))
         self._started = time.perf_counter()
         self._week = week
+        self._inputs = inputs
         return register_signals(inputs)
 
     @after_kickoff
@@ -241,7 +248,61 @@ class DeepDiveCrew:
                 "token_usage": output.token_usage.model_dump() if output.token_usage else None,
             }
             f.write(json.dumps(row) + "\n")
+        self._unregister_hooks()
         return output
+
+    # ---------------------------------------------------------------- crew-scoped hook
+    @on(InterceptionPoint.PRE_MODEL_CALL)  # pyright: ignore[reportArgumentType]  (crewai types it for functions)
+    def validate_deep_dive_inputs(self, ctx: Any) -> None:
+        """Crew-scoped PRE_MODEL_CALL hook (spec §12.1): no model call by this crew's agents unless the inputs
+        make a deep dive worth $0.04: a week of the mock world and at least one signal, each with an id.
+        Checked once per kickoff; while the inputs are bad, every call of this crew is refused, including
+        the parallel analyses that were already starting and the agents' knowledge-query rewrites (those
+        are direct LLM calls with no crew attached, so they are matched by agent).
+
+        `@on` on a @CrewBase *method* is crewai's crew-scoped form, but in 1.15.33 "scoped" only means
+        "registered when this crew object is created": it lands in the global hook list and is never
+        removed. So the hook checks the call belongs to this instance's crew (a ShortUpdateCrew or a second
+        DeepDiveCrew in the same process is left alone), and save_outputs unregisters it. crewai's planner
+        runs as its own agent outside the crew, so its one call is not covered.
+        """
+        crew_obj = self._crew_obj
+        if crew_obj is None:
+            return
+        agent = getattr(ctx, "agent", None)
+        ours = getattr(ctx, "crew", None) is crew_obj or (
+            agent is not None and any(agent is a for a in [*crew_obj.agents, crew_obj.manager_agent])
+        )
+        if not ours:
+            return
+        if self._input_problems is None:
+            self._input_problems = self._check_inputs()
+        if self._input_problems:
+            raise HookAborted(
+                reason="deep dive inputs: " + "; ".join(self._input_problems), source="deep-dive-inputs"
+            )
+
+    def _check_inputs(self) -> list[str]:
+        problems = []
+        week = self._inputs.get("week")
+        if week is None or int(week) not in WEEKS:
+            problems.append(f"week {week!r} is not one of {WEEKS}")
+        try:
+            signals = json.loads(self._inputs.get("signals") or "[]")
+        except json.JSONDecodeError:
+            signals = None
+        if not signals:
+            problems.append("no signals to analyse")
+        elif any(not isinstance(s, dict) or not s.get("id") for s in signals):
+            problems.append("a signal has no id (the guardrails could not check citations)")
+        return problems
+
+    def _unregister_hooks(self) -> None:
+        """Remove this instance's crew-scoped hooks from the global list (crewai never does, see above)."""
+        points = {p.value: p for p in InterceptionPoint}
+        for point_name, hook in getattr(self, "_registered_hook_functions", []):
+            if point_name in points:
+                unregister(points[point_name], hook)
 
     def _task_by_name(self, name: str) -> Task:
         return next(t for t in self.tasks if t.name == name)
@@ -268,7 +329,7 @@ class DeepDiveCrew:
                 manager["manager_llm"] = self._llm()
             else:
                 manager["manager_agent"] = self.head_of_strategy()
-        return Crew(
+        self._crew_obj = Crew(
             agents=self.agents,  # type: ignore[arg-type]  # list is invariant: list[Agent] vs list[BaseAgent]
             tasks=self.tasks,
             process=Process.sequential if self.variant == "sequential" else Process.hierarchical,
@@ -287,3 +348,5 @@ class DeepDiveCrew:
             verbose=self.verbose,
             **manager,
         )
+        self._input_problems = None
+        return self._crew_obj

@@ -12,10 +12,13 @@
 
 ## Where things stand (handoff)
 
-- **Done: M0–M7**, one commit each (`git log`). The README's status line and its per-milestone sections say what
+- **Done: M0–M7 and M8a**, one commit each (`git log`). The README's status line and its per-milestone sections say what
   each milestone added and how to run it; `docs/decisions.md` has every decision and live finding, numbered.
-- **Next: M8** (spec §20: hooks, observability/tracing, evals, `crewai test` / `crewai train`), then M9.
-- **Spend**: `uv run compintel costs` (about $1.34 of the $12 cap after M7).
+- **Next: M8b** (streaming + Phoenix tracing + `docs/observability.md`, with weeks 1-3 re-run under tracing),
+  then M8c (eval harness, baseline), M8d (`crewai test` / `eval` / `train`, checkpoint what-if), M9.
+  M8 was split into stages at the developer's request: each ends with commands for the developer to run.
+- **Spend**: `uv run compintel costs` (about $1.34 of the $12 cap after M7). The repo moved machines after M7:
+  `runs/costs.jsonl` starts with one `carried-forward` row of $1.34 for the earlier spend.
 - **Working agreement with the developer**:
   - Start each milestone with the API verification pass (installed source + docs), then implement, test, run
     live, document (README section + decisions + findings), commit locally, and stop with a summary.
@@ -31,5 +34,7 @@
   - Agents' memory views must recall shallow and must not save mid-run (`memory.py`), or crew checkpoints break.
   - Scouts use BaseTool twins, not `@tool`.
   - A deep dive can leave `sys.stdout` on a StringIO (`runtime.restore_std_streams`).
-- **Tests**: 162 passing (`uv run pytest`, about 65 s; the spec's target is 60 s). `uv run ruff check .`,
+  - `@on` methods on a `@CrewBase` class register globally and are never removed: guard by crew identity.
+  - An `INPUT` hook must not add keys when a crew resumes from a checkpoint (`hooks.inputs_defaults`).
+- **Tests**: 189 passing (`uv run pytest`, about 66 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.
