@@ -380,14 +380,18 @@ def run_week(
     deep_dive_variant: str = "manager_agent",
     resume: bool = False,
     reviewer: Any = None,
+    on_frame: Any = None,
 ) -> Flow[CIState]:
     """Run one week. With resume=True, fork the state of this week's unfinished run: completed paid steps
     (scouting, the crew) are skipped because their results are already in the state (@persist saved it after
     every method). A fork, not crewai's deprecated inputs.id resume, so the crashed run stays on record.
 
     `reviewer`: the HumanFeedbackProvider for the review step (None: the one already installed, else the
-    console). With review.PendingReview the run pauses at the review; see `is_paused`."""
-    flow = CompetitiveIntelFlow()
+    console). With review.PendingReview the run pauses at the review; see `is_paused`.
+
+    `on_frame`: stream the run (M8b). The flow is kicked off with `stream=True`, so kickoff returns crewai's
+    StreamSession; each StreamFrame goes to `on_frame` (e.g. streaming.StreamPrinter) as the run emits it."""
+    flow = CompetitiveIntelFlow(stream=on_frame is not None)
     inputs = {"week": week, "deep_dive_variant": deep_dive_variant}
     previous = review.use(reviewer) if reviewer is not None else None
     try:
@@ -395,9 +399,13 @@ def run_week(
             crashed = read_state_index()["in_progress"].get(str(week))
             if crashed is None:
                 raise ValueError(f"no unfinished run of week {week} to resume")
-            flow.kickoff(inputs=inputs, restore_from_state_id=crashed)
+            out = flow.kickoff(inputs=inputs, restore_from_state_id=crashed)
         else:
-            flow.kickoff(inputs=inputs)  # returns a HumanFeedbackPending if the review paused it
+            out = flow.kickoff(inputs=inputs)  # returns a HumanFeedbackPending if the review paused it
+        if on_frame is not None:
+            from compintel.streaming import consume
+
+            consume(out, on_frame)  # the run happens here, on crewai's thread; raises what kickoff would
     finally:
         if reviewer is not None:
             review.use(previous)

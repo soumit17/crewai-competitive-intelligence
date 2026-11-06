@@ -578,6 +578,65 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   route routine, 18 steps traced, ~$0.02 incl. the three revision rounds.
 - **Test suite: 195 tests, ~66 s.**
 
+## M8b decisions (streaming, Phoenix tracing)
+
+98. **Tracing: Arize Phoenix, local** (spec §15's recommendation; agreed with the developer at M8b start).
+    Client side in a `tracing` dependency group, synced by default: `openinference-instrumentation-crewai`
+    1.1.23, `arize-phoenix-otel` 0.17.2, `arize-phoenix-client` 3.7.0 (~3 MB: crewai already ships the
+    OpenTelemetry SDK).
+99. **The Phoenix server is not a dependency**: `arize-phoenix` 21.0.0 needs `aiosqlite>=0.22.1`, crewai 1.15.33
+    pins `aiosqlite<0.22`, so they can't share a venv. It runs isolated:
+    `uvx --from arize-phoenix==21.0.0 phoenix serve`. Downgrading Phoenix until it fits would tie a dev tool to
+    crewai's pins.
+100. **Event-listener mode, not wrapper mode.** `CrewAIInstrumentor` defaults to wrapping crewai methods with
+     `wrapt`; `use_event_listener=True` builds the same spans from crewai's event bus, nested by the bus's own
+     `parent_event_id`. Native events over patching (§0). We subclass its `OpenInferenceEventListener` directly
+     (`tracing.CompintelSpans`) rather than going through the instrumentor, to add spans with the same
+     assembler; that imports two private modules, pinned with the package and covered by `test_tracing.py`.
+101. **`CompintelSpans` covers every scope our runs open** (guardrail, memory save / query / retrieval, knowledge
+     query / search, MCP connection / tool, agent reasoning), plus `modified` / `aborted` hook dispatches,
+     the human review (request → answer) and the agent role on every LLM span (for the per-agent token share).
+     The scopes are not optional: see the findings.
+102. **`--stream` = the Flow's stream + streaming LLMs.** `flow.stream=True` makes kickoff return crewai's
+     `StreamSession` of every event; `config.stream_tokens()` makes the LLMs emit token chunks into it. Not
+     `Crew.stream`: it changes what `crew.kickoff()` returns (a `CrewStreamingOutput` the flow steps would
+     have to drain). `run_week(on_frame=...)` drains the session; `StreamPrinter` prints it. The live panel is
+     off while streaming.
+103. **`compintel traces` reads spans back with `phoenix.client`** and writes the generated half of
+     `docs/observability.md` (between markers). Prices come from `compintel.cost`, so the report and the
+     ledger agree on what a token costs.
+104. **`OTEL_SDK_DISABLED` is lifted only while tracing is on.** `config.apply_env()` set it as crewai's telemetry
+     opt-out; it also turns every OpenTelemetry provider into a no-op. `CREWAI_DISABLE_TELEMETRY` already
+     keeps crewai's telemetry off (`crewai_core.telemetry` checks either), so `tracing.enable()` sets it to
+     `false` and `disable()` restores it.
+105. **`deepdive` takes the week's scout reports from its published Flow state** when `runs/scout/` has none
+     (moved machines; `compintel run` already scouted), instead of scouting again.
+
+## M8b findings
+
+- **Without a span for every crewai scope, calls go missing from the trace.** The assembler parks a span until
+  its parent's span exists. OpenInference's listener has no guardrail span, so the rumor guardrail's judge
+  (an LLM call inside the guardrail scope) was never exported; the same goes for memory's and knowledge's
+  own LLM calls. A missing call, with its tokens, not a missing label.
+- **Phoenix's `TracerProvider.add_span_processor()` replaces its exporter** unless called with
+  `replace_default_processor=False`. Adding our root-span recorder the plain way recorded every span and sent
+  none (caught by a $0 live run against a local Phoenix; the in-memory tests couldn't see it).
+- **`crewai_event_bus.scoped_handlers()` unregisters every existing handler while it lasts**, not just the ones
+  added inside it, so LLM calls made inside it never reach the cost listener or the budget gate. Fine in
+  tests (conftest), wrong in a script: `scripts/stream_demo.py` adds and removes its own handler instead.
+- **A hook abort at `EXECUTION_START` is a trace of its own**: crewai dispatches it before the flow opens its
+  scope, so it has no parent. `P3_SPEND_CAP_USD=1 compintel run --week 1 --trace` shows one for $0. Before
+  M8b such an abort ended the CLI with a traceback; it is now one line and exit code 1.
+- **A task has no span of its own** in the listener's tree: the agent span is named `<Role>.<task>.execute`,
+  and guardrails sit next to it under the crew.
+- **Flow streaming runs the flow on a thread** (`utilities/streaming.create_frame_generator`) and crewai copies
+  the context into agent and async-task threads (`agent/core.py`, `task.py`), so token chunks from parallel
+  tasks reach the stream. The console review reads your answer from the flow's thread; it works.
+- **The native Anthropic provider streams tool calls and structured output too** (`tool_call` chunks with the
+  name first, then the arguments so far; structured output as JSON text), so `stream=True` is safe for every
+  agent.
+- **Test suite: 214 tests, ~80 s.**
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

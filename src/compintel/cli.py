@@ -171,12 +171,27 @@ def brief(
 
 
 def _load_scout_reports(week: int) -> dict:
+    """The week's scout reports: from `compintel scout` (runs/scout/), else from the week's published Flow
+    state, which keeps the reports it ran on (no need to scout again after `compintel run`)."""
     from compintel.models import SignalReport
 
     scout_file = get_settings().p3_runs_dir / "scout" / f"week-{week}.agents.json"
-    if not scout_file.exists():
-        raise typer.BadParameter(f"{scout_file} not found; run `compintel scout --week {week}` first")
-    return {c: SignalReport.model_validate(r) for c, r in json.loads(scout_file.read_text()).items()}
+    if scout_file.exists():
+        return {c: SignalReport.model_validate(r) for c, r in json.loads(scout_file.read_text()).items()}
+    _bootstrap()  # env before crewai's import
+    from crewai.flow.persistence import SQLiteFlowPersistence
+
+    from compintel.flow import read_state_index
+    from compintel.models import CIState
+
+    state_id = read_state_index()["published"].get(str(week))
+    data = SQLiteFlowPersistence().load_state(state_id) if state_id else None
+    reports = CIState.model_validate(data).reports if data else {}
+    if not reports:
+        hint = f"run `compintel scout --week {week}` or `compintel run --week {week}`"
+        raise typer.BadParameter(f"no scout reports for week {week}: {hint}")
+    console.print(f"[dim]scout reports from week {week}'s published run (state {state_id})[/dim]")
+    return reports
 
 
 @app.command()
@@ -189,6 +204,7 @@ def deepdive(
     ),
     final: bool = typer.Option(False, "--final", help="Brief Writer on MODEL_FINAL (Sonnet)."),
     verbose: bool = typer.Option(False, "--verbose", help="crewai's agent verbose output."),
+    trace: bool = typer.Option(False, "--trace", help="Send the run's trace to a local Phoenix (M8b)."),
 ) -> None:
     """Live: run DeepDiveCrew on saved scout reports. Haiku: a few cents (see README for per-variant cost)."""
     import os
@@ -217,7 +233,8 @@ def deepdive(
     guard_log, deleg_log, failures = GuardrailLog(), DelegationLog(), FailureLog()
     ledger = get_ledger()
     before, rows_before, started = ledger.spent_usd, _ledger_rows(), time.perf_counter()
-    result = deep_dive.run(week, reports, variant=variant, final=final, verbose=verbose)
+    with _traced(trace):
+        result = deep_dive.run(week, reports, variant=variant, final=final, verbose=verbose)
     elapsed = time.perf_counter() - started
     crewai_event_bus.flush()
 
@@ -261,6 +278,10 @@ def run(
     live: bool = typer.Option(
         None, "--live/--no-live", help="Live status panel on stderr (default: on in a terminal)."
     ),
+    stream: bool = typer.Option(
+        False, "--stream", help="Print steps, tool calls and the models' tokens as they happen (no panel)."
+    ),
+    trace: bool = typer.Option(False, "--trace", help="Send the run's trace to a local Phoenix (M8b)."),
 ) -> None:
     """Live: the whole week through the Flow (scout, route, crew, review, publish). Weeks 2+ fork the week
     before."""
@@ -279,8 +300,15 @@ def run(
     if review_mode not in ("console", "async"):
         raise typer.BadParameter("--review must be console or async")
     reviewer = review.PendingReview() if review_mode == "async" else review.ConsoleReview()
-    with _measure(f"week {week}", live=live) as done:
-        flow = run_week(week, deep_dive_variant=variant, resume=resume, reviewer=reviewer)
+    printer = None
+    if stream:
+        from compintel.config import stream_tokens
+        from compintel.streaming import StreamPrinter
+
+        stream_tokens(True)  # LLMs built from here on stream; the crews build theirs during the run
+        printer, live = StreamPrinter(console), False  # the panel would redraw over the streamed text
+    with _traced(trace), _measure(f"week {week}", live=live) as done:
+        flow = run_week(week, deep_dive_variant=variant, resume=resume, reviewer=reviewer, on_frame=printer)
         done(flow)
 
 
@@ -400,6 +428,7 @@ def review_cmd(
     live: bool = typer.Option(
         None, "--live/--no-live", help="Live status panel on stderr (default: on in a terminal)."
     ),
+    trace: bool = typer.Option(False, "--trace", help="Send the run's trace to a local Phoenix (M8b)."),
 ) -> None:
     """Live: answer a pending review; the week continues in this process (revise → another pending review)."""
     import os
@@ -412,12 +441,34 @@ def review_cmd(
     os.chdir(PROJECT_ROOT)
     from compintel import review
 
-    with _measure("review", live=live) as done:
+    with _traced(trace), _measure("review", live=live) as done:
         try:
             flow, _ = review.resume(flow_id, feedback)
         except ValueError as e:
             raise typer.BadParameter(str(e)) from e
         done(flow)
+
+
+@contextmanager
+def _traced(on: bool):
+    """Export this block's spans to Phoenix, then print where to open each trace. Nothing when `on` is
+    False."""
+    if not on:
+        yield
+        return
+    from compintel import tracing
+
+    try:
+        tracing.require_phoenix()
+    except RuntimeError as e:
+        raise typer.BadParameter(str(e)) from e
+    tracing.enable()
+    try:
+        yield
+    finally:
+        done = tracing.disable()  # flushes: the last spans are sent before the links are printed
+        for line in tracing.trace_links(done) if done else []:
+            console.print(f"[bold]trace[/bold] {line}", soft_wrap=True)  # a wrapped URL can't be clicked
 
 
 @contextmanager
@@ -430,6 +481,7 @@ def _measure(label: str, live: bool | None = None):
     from contextlib import nullcontext
 
     from crewai.events.event_bus import crewai_event_bus
+    from crewai.hooks import HookAborted
 
     from compintel import hooks, listeners
     from compintel.cost import get_ledger
@@ -440,13 +492,21 @@ def _measure(label: str, live: bool | None = None):
     monitor = listeners.monitor()
     show_live = (sys.stderr.isatty() if live is None else live) and monitor is not None
     flows: list = []
+    aborted: HookAborted | None = None
     with listeners.LiveConsole(monitor) if show_live and monitor else nullcontext():
-        yield flows.append
+        try:
+            yield flows.append
+        except HookAborted as e:  # a hook stopped the whole run (e.g. budget-gate at execution start)
+            aborted = e
         crewai_event_bus.flush()  # let the last events reach the panel before it closes
     elapsed = time.perf_counter() - started
     from compintel.runtime import restore_std_streams
 
     restore_std_streams()  # a deep dive can leave sys.stdout on crewai's StringIO (see there)
+    if aborted is not None:
+        _print_observed(monitor, hooks.step_trace.entries[steps_before:])
+        console.print(f"[red]stopped by a hook[/red] ({aborted.source}): {aborted.reason}")
+        raise typer.Exit(1)
     _print_week(flows[0], _ledger_rows() - rows_before)
     _print_observed(monitor, hooks.step_trace.entries[steps_before:])
     console.print(
@@ -500,6 +560,37 @@ def _print_week(flow, calls: int) -> None:
         f"flow.usage_metrics: {usage.total_tokens:,} tokens in {usage.successful_requests} requests "
         f"(cost ledger: {calls} calls)"
     )
+
+
+@app.command()
+def traces(
+    trace_id: list[str] = typer.Option(None, "--trace-id", help="Only these traces (default: every one)."),
+    last: int = typer.Option(0, "--last", help="Only the N most recent traces."),
+    write: bool = typer.Option(
+        False, "--write", help="Put the report into docs/observability.md (between its markers)."
+    ),
+) -> None:
+    """Summarize traced runs from the local Phoenix: delegations, fan-out, guardrails, hooks, memory, review,
+    per-agent token share. $0."""
+    from compintel import trace_report, tracing
+    from compintel.config import PROJECT_ROOT
+
+    try:
+        tracing.require_phoenix()
+        found = trace_report.group_traces(trace_report.fetch(tracing.PHOENIX_URL, tracing.PROJECT, trace_id))
+    except Exception as e:
+        raise typer.BadParameter(str(e)) from e
+    found = found[-last:] if last else found
+    if not found:
+        console.print(f"no traces in Phoenix project {tracing.PROJECT!r}; run something with --trace first")
+        return
+    markdown = trace_report.report(found)
+    if write:
+        doc = PROJECT_ROOT / "docs" / "observability.md"
+        trace_report.write_into(doc, markdown)
+        console.print(f"wrote the report for {len(found)} traces into {doc}")
+    else:
+        print(markdown)  # raw markdown: rich would re-wrap the tables
 
 
 @app.command()

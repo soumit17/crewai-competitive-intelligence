@@ -45,10 +45,18 @@ dev = [
 # Only scripts/mcp_adapter_demo.py uses MCPServerAdapter; the agents use crewai's built-in `mcps` DSL. Same package
 # crewai-tools' own [mcp] extra pulls in. Kept out of the package's dependencies, but synced by default (below).
 mcp-adapter = ["mcpadapt==0.1.20"]
+# M8b tracing, client side only: OpenInference spans from crewai's event bus, exported over OTLP to a local Phoenix.
+# The Phoenix *server* (arize-phoenix) is not here: 21.x needs aiosqlite>=0.22.1, crewai 1.15.33 pins <0.22, and a
+# server has no business in the app's venv anyway. It runs isolated: `uvx --from arize-phoenix==21.0.0 phoenix serve`.
+tracing = [
+    "arize-phoenix-client==3.7.0",
+    "arize-phoenix-otel==0.17.2",
+    "openinference-instrumentation-crewai==1.1.23",
+]
 
 [tool.uv]
 # Without this, a plain `uv sync` removes the group and MCPServerAdapter falls back to an interactive install prompt.
-default-groups = ["dev", "mcp-adapter"]
+default-groups = ["dev", "mcp-adapter", "tracing"]
 
 # Tells the crewai CLI this project is a Flow (so `crewai run` calls the `kickoff` script).
 [tool.crewai]

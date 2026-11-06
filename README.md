@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8a (the full hook set, RunMonitor and a live console) done; M8b–d (tracing, evals, training) next.
+**Status:** M8b (streaming, Phoenix tracing, [docs/observability.md](docs/observability.md)) built; its live runs are the developer's next step. M8c–d (evals, training) next.
 
 ## Setup
 
@@ -477,9 +477,32 @@ The panel goes away while you type a console review, and when the run ends. To s
 review prompt, use the terminal's scrollbar or Shift+PageUp: plain PageDown is a key the prompt receives
 (it now asks again instead of taking it as feedback).
 
+## M8b: streaming and tracing
+
+Phoenix runs beside CompIntel, isolated (it can't share crewai's venv; see decisions #99):
+`uvx --from arize-phoenix==21.0.0 phoenix serve`, then open http://127.0.0.1:6006.
+
+| Command | Cost | What to look at |
+|---|---|---|
+| `uv run pytest tests/test_tracing.py tests/test_streaming.py -v` | $0 | Each span family and the stream, on scripted runs |
+| `uv run python scripts/stream_demo.py` | < $0.01 | Plain `LLM.call` streaming: text, a tool call, structured output, chunk by chunk |
+| `uv run compintel run --week 1 --stream --trace` | ~$0.015 | Steps and tokens as they happen; a Phoenix link per trace at the end |
+| `uv run compintel deepdive --week 2 --variant manager_agent --trace` | ~$0.04 | The manager's delegations, each specialist nested in its tool call |
+| `P3_SPEND_CAP_USD=1 uv run compintel run --week 1 --trace` | $0 | A hook abort: one line, exit 1, an ERROR span in Phoenix |
+| `uv run compintel traces` (`--write`) | $0 | Delegations, fan-out, guardrails, hooks, memory, review, per-agent token share |
+
+**How it works.** crewai emits a start and end event for every step, each with its parent's id. OpenInference's
+crewai listener turns those into OpenTelemetry spans and Phoenix shows them as a tree. `CompintelSpans`
+(`tracing.py`) adds guardrails, memory, knowledge, MCP, reasoning, hook interventions and the human review.
+Without those spans, the LLM calls *inside* them would never be exported. `--stream` uses crewai's Flow
+streaming (`flow.stream = True` → a `StreamSession` of every event) with streaming LLMs, so you see tokens.
+
+What a trace looks like, span by span, and the six things the spec asks to show (delegations, fan-out, a
+guardrail retry, a hook abort, memory, token share): [docs/observability.md](docs/observability.md).
+
 ## Later milestones' commands
 
-M8b adds streaming and tracing (Phoenix), M8c the eval harness, M8d `crewai test` / `crewai train`.
+M8c adds the eval harness, M8d `crewai test` / `crewai train` and the checkpoint what-if.
 
 ## How one weekly run flows, end to end
 
@@ -550,7 +573,7 @@ ShelfMitra do in Kolkata and when?" from memory and past briefs.
 | M5 | The Flow, persistence, checkpointing, replay | $1.20 |
 | M6 | Human feedback (blocking, async, learn) | $1.00 |
 | M7 | Unified memory + Ask the Analyst chat | $1.20 |
-| M8 | Full hooks + live console (M8a), tracing (M8b), evals (M8c), `crewai test/train` (M8d) | $3.00 |
+| M8 | Full hooks + live console (M8a), streaming + tracing (M8b), evals (M8c), `crewai test/train` (M8d) | $3.00 |
 | M9 | Polish & retrospective | $0.30 |
 
 Budget cap $12, enforced in code from M0.

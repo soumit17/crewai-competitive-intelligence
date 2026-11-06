@@ -262,8 +262,6 @@ def test_hitl_review_pauses_the_live_panel(world, stubs, monkeypatch):
     assert seen["paused"] is True
 
 
-
-
 # ---------------------------------------------------------------- console review input
 @pytest.mark.parametrize(
     ("raw", "clean"),

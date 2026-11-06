@@ -108,6 +108,8 @@ class ScriptedLLM(BaseLLM):
             except (HookAborted, LLMCallBlockedError) as e:
                 self._emit_call_denied_event(e, from_task, from_agent)
                 raise
+            if self.stream:
+                self._stream(reply, from_task, from_agent)
             self._track_token_usage_internal(dict(self.usage))
             self._emit_call_completed_event(
                 response=reply,
@@ -119,6 +121,25 @@ class ScriptedLLM(BaseLLM):
                 response_id=f"scripted-{id(self)}-{len(self.calls)}",
             )
             return reply
+
+    def _stream(self, reply: Any, from_task: Any, from_agent: Any) -> None:
+        """As the native provider does with stream=True: the answer as LLMStreamChunkEvents before it
+        completes (text a few words at a time; a structured answer as its JSON; a tool call by name)."""
+        if isinstance(reply, list) and reply and isinstance(reply[0], ToolUseBlock):
+            for k, block in enumerate(reply):
+                call = {
+                    "id": block.id,
+                    "function": {"name": block.name, "arguments": ""},
+                    "type": "function",
+                    "index": k,
+                }
+                self._emit_stream_chunk_event("", from_task, from_agent, tool_call=call)
+            return
+        text = reply.model_dump_json() if isinstance(reply, BaseModel) else str(reply)
+        words = text.split(" ")
+        for i in range(0, len(words), 4):
+            piece = " ".join(words[i : i + 4]) + (" " if i + 4 < len(words) else "")
+            self._emit_stream_chunk_event(piece, from_task, from_agent, response_id=f"scripted-{id(self)}")
 
     def _answer(self, role: str | None, messages: list[Any], response_model: type[BaseModel] | None) -> Any:
         prompt = json.dumps(messages, default=str)
