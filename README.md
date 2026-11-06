@@ -473,7 +473,9 @@ panel:
 ╰───────────────────────────────────────────────────────────────────╯
 ```
 
-The panel goes away while you type a console review, and when the run ends.
+The panel goes away while you type a console review, and when the run ends. To scroll a long brief at the
+review prompt, use the terminal's scrollbar or Shift+PageUp: plain PageDown is a key the prompt receives
+(it now asks again instead of taking it as feedback).
 
 ## Later milestones' commands
 

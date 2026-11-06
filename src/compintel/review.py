@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,13 +30,41 @@ def as_brief(output: Any) -> Brief:
     return output if isinstance(output, Brief) else Brief.model_validate(output)
 
 
+# Terminal key sequences: CSI (ESC [ ... final byte: arrows, PageUp/PageDown "ESC[6~"), SS3 (ESC O x), and
+# any other ESC + one character.
+_KEY_SEQUENCE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O.|.)?")
+
+
+def clean_feedback(raw: str) -> str:
+    """The reviewer's text without terminal key sequences or other control characters."""
+    text = _KEY_SEQUENCE.sub("", raw or "")
+    return "".join(ch for ch in text if ch.isprintable()).strip()
+
+
 class ConsoleReview(ConsoleProvider):
+    """crewai's ConsoleProvider, shown the rendered brief, with the live panel paused while you type.
+
+    input() takes keys literally: PageDown pressed to scroll the brief arrives as "\x1b[6~", and the review
+    model read that as "revise" (live, M8a: two wasted revision rounds). Key sequences are stripped, and an
+    answer that was *only* keys is asked for again rather than routed. A plain Enter is still an empty answer
+    (= revise, by design).
+    """
+
     def request_feedback(self, context: PendingFeedbackContext, flow: Any) -> str:
         shown = dataclasses.replace(context, method_output=render_markdown(as_brief(context.method_output)))
         from compintel.listeners import live_paused
 
         with live_paused():  # take the live panel down while the reviewer reads and types
-            return super().request_feedback(shown, flow)
+            raw = super().request_feedback(shown, flow)
+            feedback = clean_feedback(raw)
+            while raw.strip() and not feedback:
+                print(
+                    "That was a key press (PageDown, an arrow...), not feedback. Scroll with your terminal's "
+                    "scrollbar or Shift+PageUp; type your feedback, or press Enter to ask for a revision."
+                )
+                raw = input("Your feedback: ")
+                feedback = clean_feedback(raw)
+            return feedback
 
 
 def pending_dir() -> Path:

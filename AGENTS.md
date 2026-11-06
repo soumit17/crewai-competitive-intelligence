@@ -36,5 +36,5 @@
   - A deep dive can leave `sys.stdout` on a StringIO (`runtime.restore_std_streams`).
   - `@on` methods on a `@CrewBase` class register globally and are never removed: guard by crew identity.
   - An `INPUT` hook must not add keys when a crew resumes from a checkpoint (`hooks.inputs_defaults`).
-- **Tests**: 189 passing (`uv run pytest`, about 66 s; the spec's target is 60 s). `uv run ruff check .`,
+- **Tests**: 195 passing (`uv run pytest`, about 66 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.

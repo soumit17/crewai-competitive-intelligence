@@ -570,7 +570,13 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 - **Live panel and listener locks**: event handlers run on crewai's thread pool while rich's refresh thread
   calls the render function. Printing a line from inside the monitor's lock while the panel redraws (which
   takes the same lock) can deadlock; lines are queued and printed after the lock is released.
-- **Test suite: 189 tests, ~66 s.**
+- **Live week 1 (developer's run): a PageDown became review feedback.** crewai's `ConsoleProvider` reads the
+  answer with plain `input()`, which takes keys literally: PageDown, pressed to scroll the long brief, arrived
+  as `"\x1b[6~"`, twice, and the review model routed it as "revise"; a final Enter (empty = revise) hit the
+  revision limit and week 1 published with an editor's note. `ConsoleReview` now strips terminal key
+  sequences and asks again when an answer was only keys (`review.clean_feedback`). The run itself worked:
+  route routine, 18 steps traced, ~$0.02 incl. the three revision rounds.
+- **Test suite: 195 tests, ~66 s.**
 
 ## Open questions for the developer
 

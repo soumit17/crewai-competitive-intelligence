@@ -262,3 +262,50 @@ def test_hitl_review_pauses_the_live_panel(world, stubs, monkeypatch):
     assert seen["paused"] is True
 
 
+
+
+# ---------------------------------------------------------------- console review input
+@pytest.mark.parametrize(
+    ("raw", "clean"),
+    [
+        ("\x1b[6~", ""),  # PageDown
+        ("\x1b[A\x1b[B", ""),  # arrows
+        ("Looks good\x1b[D, ship it", "Looks good, ship it"),
+        ("  lead with Kolkata  ", "lead with Kolkata"),
+    ],
+)
+def test_terminal_key_sequences_are_not_feedback(raw, clean):
+    from compintel.review import clean_feedback
+
+    assert clean_feedback(raw) == clean
+
+
+def test_a_review_answer_of_only_key_presses_is_asked_again(monkeypatch):
+    """Live M8a: PageDown pressed to scroll the brief became the feedback, and was routed as "revise"."""
+    from compintel import review
+
+    answers = iter(["\x1b[6~", "\x1b[6~", "Looks good, approve."])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    context = review.PendingFeedbackContext(
+        flow_id="f",
+        flow_class="CompetitiveIntelFlow",
+        method_name="editorial_review",
+        method_output=brief_for(1, "routine"),
+        message="Review",
+    )
+    flow = SimpleNamespace(name="CompetitiveIntelFlow")
+    assert review.ConsoleReview().request_feedback(context, flow=flow) == "Looks good, approve."
+
+
+def test_a_plain_enter_is_still_an_empty_answer(monkeypatch):
+    from compintel import review
+
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+    context = review.PendingFeedbackContext(
+        flow_id="f",
+        flow_class="CompetitiveIntelFlow",
+        method_name="editorial_review",
+        method_output=brief_for(1, "routine"),
+        message="Review",
+    )
+    assert review.ConsoleReview().request_feedback(context, flow=SimpleNamespace(name="F")) == ""
