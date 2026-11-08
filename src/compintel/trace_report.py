@@ -182,7 +182,7 @@ def _timeline(group: list[Span], width: int = 40) -> list[str]:
         a = (_t(s["start_time"]) - start).total_seconds()
         b = a + _secs(s)
         bar = " " * round(a / span_total * width) + "█" * max(1, round((b - a) / span_total * width))
-        lines.append(f"{_role(s)[:22]:22} |{bar:<{width}}| {a:6.2f}s → {b:6.2f}s")
+        lines.append(f"{_role(s)[:26]:26} |{bar:<{width}}| {a:6.2f}s → {b:6.2f}s")
     return lines
 
 
@@ -211,6 +211,9 @@ def report(traces: list[Trace]) -> str:
 
     for t in traces:
         w(f"\n### `{t.root['context']['trace_id'][:8]}` {t.root['name']}\n")
+        if len(t.spans) == 1 and not hook_spans(t):
+            w("Nothing ran: the run was stopped before its first step (see the hook abort just above).")
+            continue
         if d := delegations(t):
             w("**Manager delegations** (crewai's delegation tool → the coworker's agent span inside it):\n")
             for x in d:

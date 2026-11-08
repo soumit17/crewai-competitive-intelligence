@@ -126,7 +126,7 @@ def test_run_command_runs_a_week_through_the_flow(world, monkeypatch, tmp_path):
     hitl.install(monkeypatch, hitl.ScriptedReviewer())  # the review model; the reviewer is you, on stdin
     result = runner.invoke(app, ["run", "--week", "1"], input="Approved, looks good.\n")
     assert result.exit_code == 0, result.output
-    assert "OUTPUT FOR REVIEW" in result.output and "# Week 01: Week 1" in result.output  # rendered, not repr
+    assert "BRIEF FOR REVIEW" in result.output and "# Week 01: Week 1" in result.output  # rendered, not repr
     assert "route routine" in result.output and "published briefs/week-01.md" in result.output
     assert "review 1: approve ← 'Approved, looks good.'" in result.output
     assert "flow.usage_metrics:" in result.output

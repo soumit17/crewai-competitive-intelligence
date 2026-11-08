@@ -611,6 +611,10 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
      `false` and `disable()` restores it.
 105. **`deepdive` takes the week's scout reports from its published Flow state** when `runs/scout/` has none
      (moved machines; `compintel run` already scouted), instead of scouting again.
+106. **`ConsoleReview` asks for the answer itself** instead of calling crewai's `ConsoleProvider.request_feedback`:
+     same `HumanFeedbackRequested/ReceivedEvent`s and panel pauses, but the prompt says "Enter alone = revise",
+     an empty answer is asked once more, and the received event carries the final answer. Re-asking after
+     crewai's `input()` would have been too late: crewai emits the received event with the first answer.
 
 ## M8b findings
 
@@ -635,7 +639,15 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 - **The native Anthropic provider streams tool calls and structured output too** (`tool_call` chunks with the
   name first, then the arguments so far; structured output as JSON text), so `stream=True` is safe for every
   agent.
-- **Test suite: 214 tests, ~80 s.**
+- **Live (developer, 2026-11-08): every review answer was empty.** Six reviews over weeks 1-2, six bare
+  Enters (spans of 2 s to 259 s). crewai's `ConsoleProvider` prompt says "Press Enter to skip", while our
+  `default_outcome="revise"` makes it a revise with no instructions, so both weeks hit the revision limit.
+  Typed text does reach the review from the flow's thread under `--stream` (checked through a pty). Decision 106.
+- **A failed LLM call is in neither the ledger nor the trace's token counts.** Live: the `manager_agent` deep
+  dive's crew planner ran out of tokens mid-JSON (`PlannerTaskPydanticOutput`, EOF at character 18,206).
+  crewai reports usage only on `LLMCallCompletedEvent`, so the ledger under-counts billed tokens of failed
+  calls. Otherwise trace and ledger agree: $0.1374 vs $0.1379 for the same runs.
+- **Test suite: 215 tests, ~80 s.**
 
 ## Open questions for the developer
 

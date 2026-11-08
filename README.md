@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8b (streaming, Phoenix tracing, [docs/observability.md](docs/observability.md)) built; its live runs are the developer's next step. M8c–d (evals, training) next.
+**Status:** M8b (streaming, Phoenix tracing, [docs/observability.md](docs/observability.md)) done, weeks 1-2 and the deep dive traced live; M8c–d (evals, training) next.
 
 ## Setup
 
@@ -496,6 +496,10 @@ crewai listener turns those into OpenTelemetry spans and Phoenix shows them as a
 (`tracing.py`) adds guardrails, memory, knowledge, MCP, reasoning, hook interventions and the human review.
 Without those spans, the LLM calls *inside* them would never be exported. `--stream` uses crewai's Flow
 streaming (`flow.stream = True` → a `StreamSession` of every event) with streaming LLMs, so you see tokens.
+
+**At the review prompt**, type `approve`, what to change, or `reject`. Enter alone asks for a revision with
+no instructions, so the prompt asks once more before it counts (live M8b: six Enters meant to "skip" were six
+revisions).
 
 What a trace looks like, span by span, and the six things the spec asks to show (delegations, fan-out, a
 guardrail retry, a hook abort, memory, token share): [docs/observability.md](docs/observability.md).

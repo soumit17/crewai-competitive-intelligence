@@ -237,28 +237,35 @@ def test_live_paused_is_harmless_without_a_live_console():
         pass
 
 
+def review_context():
+    from compintel import review
+
+    return review.PendingFeedbackContext(
+        flow_id="f",
+        flow_class="CompetitiveIntelFlow",
+        method_name="editorial_review",
+        method_output=brief_for(1, "routine"),
+        message="Review",
+    )
+
+
+FLOW = SimpleNamespace(name="CompetitiveIntelFlow")
+
+
 def test_hitl_review_pauses_the_live_panel(world, stubs, monkeypatch):
-    """ConsoleReview takes the panel down around crewai's input() prompt."""
+    """ConsoleReview takes the panel down around its input() prompt."""
     from compintel import review
 
     seen = {}
 
-    def fake_request(self, context, flow):
+    def fake_input(*_):
         seen["paused"] = listeners._active_live is not None and not listeners._active_live._live.is_started
         return "Looks good, approve."
 
-    monkeypatch.setattr(review.ConsoleProvider, "request_feedback", fake_request)
+    monkeypatch.setattr("builtins.input", fake_input)
     monitor = listeners.RunMonitor()
     with listeners.LiveConsole(monitor, Console(file=io.StringIO(), force_terminal=True)):
-        context = review.PendingFeedbackContext(
-            flow_id="f",
-            flow_class="CompetitiveIntelFlow",
-            method_name="editorial_review",
-            method_output=brief_for(1, "routine"),
-            message="Review",
-        )
-        provider = review.ConsoleReview()
-        assert provider.request_feedback(context, flow=None) == "Looks good, approve."
+        assert review.ConsoleReview().request_feedback(review_context(), flow=FLOW) == "Looks good, approve."
     assert seen["paused"] is True
 
 
@@ -284,26 +291,32 @@ def test_a_review_answer_of_only_key_presses_is_asked_again(monkeypatch):
 
     answers = iter(["\x1b[6~", "\x1b[6~", "Looks good, approve."])
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
-    context = review.PendingFeedbackContext(
-        flow_id="f",
-        flow_class="CompetitiveIntelFlow",
-        method_name="editorial_review",
-        method_output=brief_for(1, "routine"),
-        message="Review",
-    )
-    flow = SimpleNamespace(name="CompetitiveIntelFlow")
-    assert review.ConsoleReview().request_feedback(context, flow=flow) == "Looks good, approve."
+    assert review.ConsoleReview().request_feedback(review_context(), flow=FLOW) == "Looks good, approve."
 
 
-def test_a_plain_enter_is_still_an_empty_answer(monkeypatch):
+def test_an_empty_answer_is_asked_once_more_and_two_mean_revise(monkeypatch, capsys):
+    """Live M8b: crewai's prompt said "Enter to skip"; six Enters were six instruction-less revisions."""
     from compintel import review
 
-    monkeypatch.setattr("builtins.input", lambda *_: "")
-    context = review.PendingFeedbackContext(
-        flow_id="f",
-        flow_class="CompetitiveIntelFlow",
-        method_name="editorial_review",
-        method_output=brief_for(1, "routine"),
-        message="Review",
-    )
-    assert review.ConsoleReview().request_feedback(context, flow=SimpleNamespace(name="F")) == ""
+    calls = []
+    monkeypatch.setattr("builtins.input", lambda *_: calls.append(1) or "")
+    assert review.ConsoleReview().request_feedback(review_context(), flow=FLOW) == ""
+    assert len(calls) == 2
+    out = capsys.readouterr().out
+    assert out.count(review.ConsoleReview.EMPTY_HINT) == 1 and "Enter alone = revise" in out
+    assert "Press Enter to skip" not in out
+
+
+def test_the_answer_after_an_empty_one_is_the_one_recorded(monkeypatch):
+    """The received event (what the trace and the monitor see) carries the final answer, sent once."""
+    from crewai.events.types.flow_events import HumanFeedbackReceivedEvent
+
+    from compintel import review
+
+    received = []
+    crewai_event_bus.on(HumanFeedbackReceivedEvent)(lambda _, e: received.append(e.feedback))
+    answers = iter(["", "approve"])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    assert review.ConsoleReview().request_feedback(review_context(), flow=FLOW) == "approve"
+    crewai_event_bus.flush()
+    assert received == ["approve"]

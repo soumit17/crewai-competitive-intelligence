@@ -12,11 +12,11 @@
 
 ## Where things stand (handoff)
 
-- **Done: M0–M7, M8a and M8b** (M8b's live runs, weeks 1-3 under tracing, are the developer's), one commit each (`git log`). The README's status line and its per-milestone sections say what
+- **Done: M0–M7, M8a and M8b** (live: weeks 1-2 and the manager deep dive traced; week 3 not yet), one commit each (`git log`). The README's status line and its per-milestone sections say what
   each milestone added and how to run it; `docs/decisions.md` has every decision and live finding, numbered.
 - **Next: M8c** (eval harness, baseline), then M8d (`crewai test` / `eval` / `train`, checkpoint what-if), M9.
-  Before M8c: if the developer ran M8b's live weeks, `uv run compintel traces --write` fills the generated half
-  of `docs/observability.md`; review and commit it with the week briefs.
+  Weeks 1-2 were published with editor's notes (empty review answers, decisions #106); week 3 isn't run yet.
+  M8c evaluates all three weeks, so it needs week 3 (and, ideally, weeks 1-2 re-run with real reviews).
   M8 was split into stages at the developer's request: each ends with commands for the developer to run.
 - **Spend**: `uv run compintel costs` (about $1.34 of the $12 cap after M7). The repo moved machines after M7:
   `runs/costs.jsonl` starts with one `carried-forward` row of $1.34 for the earlier spend.
@@ -40,5 +40,5 @@
   - Tracing: Phoenix's server runs under `uvx` (not in the venv). Adding a span processor to Phoenix's
     TracerProvider needs `replace_default_processor=False`, or nothing is exported.
   - `crewai_event_bus.scoped_handlers()` hides *every* handler (the cost listener too) while it lasts: tests only.
-- **Tests**: 214 passing (`uv run pytest`, about 80 s; the spec's target is 60 s). `uv run ruff check .`,
+- **Tests**: 215 passing (`uv run pytest`, about 80 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.

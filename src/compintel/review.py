@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import re
 from pathlib import Path
@@ -42,29 +41,92 @@ def clean_feedback(raw: str) -> str:
 
 
 class ConsoleReview(ConsoleProvider):
-    """crewai's ConsoleProvider, shown the rendered brief, with the live panel paused while you type.
+    """crewai's ConsoleProvider, reworded for our review: the rendered brief, the live panel paused while you
+    type, terminal keys ignored, and an empty answer confirmed before it counts.
 
-    input() takes keys literally: PageDown pressed to scroll the brief arrives as "\x1b[6~", and the review
-    model read that as "revise" (live, M8a: two wasted revision rounds). Key sequences are stripped, and an
-    answer that was *only* keys is asked for again rather than routed. A plain Enter is still an empty answer
-    (= revise, by design).
+    Why its own `request_feedback` (same events, same panel pause as crewai's):
+    - crewai's prompt says "Press Enter to skip", but this review's `default_outcome` is "revise" (silence
+      isn't approval). Live M8b: the developer pressed Enter at all six reviews of weeks 1-2, each was a
+      revise with no instructions, and both weeks hit the revision limit. An empty answer is now asked once
+      more, and the prompt says what Enter does.
+    - `input()` takes keys literally: PageDown pressed to scroll arrives as "\x1b[6~" (live M8a: two wasted
+      rounds). Key sequences are stripped; an answer that was only keys is asked again.
+    - Asking again *after* crewai's own `input()` would be too late: it has already emitted
+      HumanFeedbackReceivedEvent with the first answer (the trace and the monitor would show that one).
     """
 
+    EMPTY_HINT = (
+        "An empty answer sends the brief back for a revision with no instructions. To publish it, type "
+        "approve (or say what to change, or reject). Press Enter again to send it back anyway."
+    )
+    KEYS_HINT = (
+        "That was a key press (PageDown, an arrow...), not feedback. Scroll with your terminal's scrollbar "
+        "or Shift+PageUp; then type your answer."
+    )
+
     def request_feedback(self, context: PendingFeedbackContext, flow: Any) -> str:
-        shown = dataclasses.replace(context, method_output=render_markdown(as_brief(context.method_output)))
+        from crewai.events.event_bus import crewai_event_bus
+        from crewai.events.event_listener import event_listener
+        from crewai.events.types.flow_events import HumanFeedbackReceivedEvent, HumanFeedbackRequestedEvent
+
         from compintel.listeners import live_paused
 
-        with live_paused():  # take the live panel down while the reviewer reads and types
-            raw = super().request_feedback(shown, flow)
-            feedback = clean_feedback(raw)
-            while raw.strip() and not feedback:
-                print(
-                    "That was a key press (PageDown, an arrow...), not feedback. Scroll with your terminal's "
-                    "scrollbar or Shift+PageUp; type your feedback, or press Enter to ask for a revision."
+        name = flow.name or flow.__class__.__name__
+        crewai_event_bus.emit(
+            flow,
+            HumanFeedbackRequestedEvent(
+                type="human_feedback_requested",
+                flow_name=name,
+                method_name=context.method_name,
+                output=context.method_output,
+                message=context.message,
+                emit=context.emit,
+            ),
+        )
+        formatter = event_listener.formatter
+        formatter.pause_live_updates()  # crewai's own console output
+        try:
+            with live_paused():  # and our live panel
+                console = formatter.console
+                console.print("\n" + "═" * 50, style="bold cyan")
+                console.print("  BRIEF FOR REVIEW", style="bold cyan")
+                console.print("═" * 50 + "\n", style="bold cyan")
+                console.print(render_markdown(as_brief(context.method_output)))
+                console.print("\n" + "═" * 50 + "\n", style="bold cyan")
+                console.print(context.message, style="yellow")
+                console.print(
+                    "(approve · say what to change · reject — Enter alone = revise)\n", style="cyan"
                 )
-                raw = input("Your feedback: ")
-                feedback = clean_feedback(raw)
-            return feedback
+                feedback = self._ask()
+        finally:
+            formatter.resume_live_updates()
+        crewai_event_bus.emit(
+            flow,
+            HumanFeedbackReceivedEvent(
+                type="human_feedback_received",
+                flow_name=name,
+                method_name=context.method_name,
+                feedback=feedback,
+                outcome=None,  # as crewai's: mapped to approve / revise / reject afterwards
+            ),
+        )
+        return feedback
+
+    def _ask(self) -> str:
+        """The cleaned answer; "" only if the reviewer pressed Enter twice."""
+        confirmed_empty = False
+        while True:
+            raw = input("Your feedback: ")
+            feedback = clean_feedback(raw)
+            if feedback:
+                return feedback
+            if raw.strip():  # only key sequences
+                print(self.KEYS_HINT)
+            elif confirmed_empty:
+                return ""
+            else:
+                print(self.EMPTY_HINT)
+                confirmed_empty = True
 
 
 def pending_dir() -> Path:
