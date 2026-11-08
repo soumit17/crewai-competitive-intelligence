@@ -83,6 +83,9 @@ class ConsoleReview(ConsoleProvider):
                 emit=context.emit,
             ),
         )
+        # Handlers run on the bus's thread pool: let them finish (the monitor prints "review requested") so
+        # nothing is written over the prompt line once it's on screen.
+        crewai_event_bus.flush()
         formatter = event_listener.formatter
         formatter.pause_live_updates()  # crewai's own console output
         try:
