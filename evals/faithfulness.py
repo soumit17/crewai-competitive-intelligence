@@ -1,0 +1,168 @@
+"""Faithfulness and rumor handling (spec §17.1).
+
+- ids (deterministic): every signal id a brief cites exists, in that week's reports or an earlier week's
+  ("since last week" may cite last week's signals).
+- cited (deterministic): the claims that must cite (TL;DR, threat rationales, recommendations) do.
+- judge (Haiku, one batched call per week): does each claim follow from the signals it cites? supported = 1,
+  partial = 0.5, unsupported = 0. Acceptance: >= 95%.
+- rumor: no must-not-claim phrase outside discounted_claims (every week), and every rumor ground truth says
+  must be discounted is listed there by id.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from compintel.models import Brief, Signal
+from compintel.world.ground_truth import check_brief, find
+from evals.data import WeekRun
+
+SIGNAL_ID = re.compile(r"\b(?:StockSathi|ShelfMitra|BahiBook)-\d+-\d+\b")
+
+
+@dataclass
+class Claim:
+    section: str
+    text: str
+    ids: list[str] = field(default_factory=list)
+    must_cite: bool = True
+
+
+def claims(brief: Brief) -> list[Claim]:
+    """Every statement the brief makes as fact, with the ids it cites. Discounted claims are not claims."""
+
+    def ids(*texts: str, extra: list[str] | None = None) -> list[str]:
+        found = [i for t in texts for i in SIGNAL_ID.findall(t)] + list(extra or [])
+        return list(dict.fromkeys(found))
+
+    out = [Claim("tl_dr", t, ids(t)) for t in brief.tl_dr]
+    out += [Claim("since_last_week", t, ids(t), must_cite=False) for t in brief.since_last_week]
+    out += [
+        Claim(
+            "threat", f"{t.company} threat is {t.threat}: {t.rationale}", ids(t.rationale, extra=t.signal_ids)
+        )
+        for t in brief.threats
+    ]
+    out += [
+        Claim("recommendation", r.action, ids(r.action, extra=r.signal_ids)) for r in brief.recommendations
+    ]
+    out += [Claim("watchlist", t, ids(t), must_cite=False) for t in brief.watchlist]
+    return out
+
+
+def all_cited(brief: Brief) -> list[str]:
+    """Every id cited anywhere in the brief, discounted claims included (an id there must exist too)."""
+    return SIGNAL_ID.findall(brief.model_dump_json())
+
+
+def week_ids(run: WeekRun, known: dict[str, Signal]) -> dict:
+    cited = all_cited(run.brief)
+    unknown = sorted({i for i in cited if i not in known})
+    must = [c for c in claims(run.brief) if c.must_cite]
+    return {
+        "ids_cited": len(cited),
+        "ids_valid": sum(i in known for i in cited),
+        "unknown_ids": unknown,
+        "claims_must_cite": len(must),
+        "claims_citing": sum(bool(c.ids) for c in must),
+        "uncited": [f"{c.section}: {c.text[:80]}" for c in must if not c.ids],
+    }
+
+
+def week_rumor(run: WeekRun) -> dict:
+    check = check_brief(run.brief, run.reports, run.week)
+    discount = [find(e, run.reports) for e in run.truth["must_discount"]]
+    listed = " ".join(run.brief.discounted_claims)
+    return {
+        "claims_rumor": bool(check["claims_rumor"]),
+        "must_discount": len(discount),
+        "discounted": sum(s is not None and s.id in listed for s in discount),
+    }
+
+
+# ---------------------------------------------------------------- the judge
+class ClaimVerdict(BaseModel):
+    n: int = Field(description="The claim's number in the list.")
+    verdict: Literal["supported", "partial", "unsupported"]
+    reason: str = Field(description="One short sentence; name the detail that isn't supported, if any.")
+
+
+class FaithfulnessVerdicts(BaseModel):
+    verdicts: list[ClaimVerdict]
+
+
+JUDGE_INSTRUCTIONS = """You check a competitive-intelligence brief against its sources. Each numbered claim
+below lists the source signals it cites. Judge only from those signals, not from what you know.
+
+- supported: every fact in the claim (numbers, prices, places, names, direction of a change) is stated in or
+  directly follows from the cited signals. A recommendation or threat level is supported when the cited
+  signals give a reasonable basis for it.
+- partial: mostly supported, but one detail goes beyond the cited signals.
+- unsupported: a fact contradicts the signals or appears in none of them, or the claim states as fact
+  something a signal with credibility below 0.5 only reports.
+
+Return one verdict per claim, using its number."""
+
+VERDICT_SCORE = {"supported": 1.0, "partial": 0.5, "unsupported": 0.0}
+
+
+def judge_prompt(items: list[tuple[int, Claim]], known: dict[str, Signal]) -> str:
+    lines = [JUDGE_INSTRUCTIONS, ""]
+    for n, c in items:
+        lines.append(f"Claim {n} ({c.section}): {c.text}")
+        for i in c.ids:
+            s = known.get(i)
+            if s is not None:
+                lines.append(f"  - [{i}] (credibility {s.source_credibility}) {s.detail}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def judge_week(run: WeekRun, known: dict[str, Signal], llm: Any) -> dict:
+    """One call: every claim that cites at least one existing signal. Uncited claims are counted by `ids`."""
+    items = [(n, c) for n, c in enumerate(claims(run.brief), 1) if any(i in known for i in c.ids)]
+    if not items:
+        return {"judged": 0, "score": None, "verdicts": []}
+    raw = llm.call(
+        [{"role": "user", "content": judge_prompt(items, known)}], response_model=FaithfulnessVerdicts
+    )
+    out = raw if isinstance(raw, FaithfulnessVerdicts) else FaithfulnessVerdicts.model_validate_json(str(raw))
+    by_n = {v.n: v for v in out.verdicts}
+    verdicts = []
+    for n, c in items:
+        v = by_n.get(n)
+        verdict = v.verdict if v else "unsupported"  # a claim the judge skipped isn't given the benefit
+        verdicts.append(
+            {
+                "n": n,
+                "section": c.section,
+                "claim": c.text,
+                "verdict": verdict,
+                "reason": v.reason if v else "no verdict returned",
+            }
+        )
+    points = sum(VERDICT_SCORE[v["verdict"]] for v in verdicts)
+    return {"judged": len(verdicts), "points": points, "verdicts": verdicts}
+
+
+def scores(
+    ids: dict[int, dict], rumor: dict[int, dict], judged: dict[int, dict] | None
+) -> dict[str, float | None]:
+    from evals.signals import pct
+
+    total = lambda d, key: sum(w[key] for w in d.values())  # noqa: E731
+    out = {
+        "faithfulness.ids": pct(total(ids, "ids_valid"), total(ids, "ids_cited")),
+        "faithfulness.cited": pct(total(ids, "claims_citing"), total(ids, "claims_must_cite")),
+        "rumor.never_claimed": pct(sum(not w["claims_rumor"] for w in rumor.values()), len(rumor)),
+        "rumor.discounted": pct(total(rumor, "discounted"), total(rumor, "must_discount")),
+    }
+    if judged:
+        judged_n = sum(w["judged"] for w in judged.values())
+        points = sum(w.get("points", 0.0) for w in judged.values())
+        out["faithfulness.judge"] = None if judged_n == 0 else round(100 * points / judged_n, 1)
+    return out

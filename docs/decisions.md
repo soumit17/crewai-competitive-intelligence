@@ -663,6 +663,33 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   was answered, forking the old week 2 a second time. Now refused (decision 108).
 - **Test suite: 217 tests, ~80 s.**
 
+## M8c decisions (eval harness)
+
+109. **`evals/` is a top-level package** (the spec's layout), run with `uv run python -m evals`; it reads the
+     published Flow states (`runs/state_index.json`), not `briefs/*.json`, because faithfulness needs the
+     reports each brief was written from.
+110. **Precision = high-impact precision**: of the signals rated `high`, the share matching a material or
+     must-surface expectation (any match, so a careers page split into one signal per role counts once per
+     line). Ground truth lists only key signals; plain precision would count every true but unlisted line as
+     a false positive.
+111. **Faithfulness judge: one batched Haiku call per week**, `response_model=FaithfulnessVerdicts`; supported 1,
+     partial 0.5, unsupported 0, a claim the judge skips counts as unsupported. Discounted claims are not
+     judged (they are claims not made); the rumor checks cover them.
+112. **Every metric on 0-100** (the quality rubric's 1-5 mapped linearly), so the spec's ">3-point drop" gate is
+     one rule. Judged metrics are compared only when the same model judged them both times.
+113. **Your blind scores go in a file** (`evals/human_scores.json`), not a console prompt: the console review
+     prompt received only empty answers on the developer's terminal (M8b).
+114. **The process comparison is quoted, not re-run**: it was a one-off live experiment (M4); `evals/compare.py`
+     carries its committed table into the report.
+
+## M8c findings
+
+- **First $0 run on the published weeks**: recall 100% (week-2 material 4/4), routing 3/3, every cited id valid,
+  rumor never claimed and discounted, threat levels 8/9 (week 3 BahiBook low, expected medium). High-impact
+  precision 63.6%: week 2 6/6, week 3 1/5, because the week-3 scouts rated an *unchanged* Pro price and a
+  re-listed careers page `high`. Novelty `repeat` isn't keeping repeats out of `high`.
+- **Test suite: 230 tests, ~83 s.**
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

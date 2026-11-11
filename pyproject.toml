@@ -74,7 +74,7 @@ addopts = "-q --disable-socket --allow-unix-socket --allow-hosts=127.0.0.1"
 filterwarnings = ["ignore::DeprecationWarning:crewai.agent.core"]
 
 [tool.pyright]
-include = ["src"]
+include = ["src", "evals"]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
 venvPath = "."

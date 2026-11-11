@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8b (streaming, Phoenix tracing, [docs/observability.md](docs/observability.md)) done; weeks 1-3 re-published under tracing with async reviews. M8c–d (evals, training) next.
+**Status:** M8c (eval harness `evals/`, baseline and regression gate) built; its judged run and baseline are the developer's next step. M8d (`crewai test/train`, checkpoint what-if) next.
 
 ## Setup
 
@@ -504,9 +504,38 @@ revisions).
 What a trace looks like, span by span, and the six things the spec asks to show (delegations, fan-out, a
 guardrail retry, a hook abort, memory, token share): [docs/observability.md](docs/observability.md).
 
+## M8c: the eval harness
+
+`evals/` scores the three **published** weeks (their Flow states: the reports each ran on, the brief, the
+route) against ground truth. Every metric is 0-100, so one rule gates them all: more than 3 points below
+`evals/baseline.json` fails.
+
+| Command | Cost | What it does |
+|---|---|---|
+| `uv run python -m evals run --no-judge` | $0 | Deterministic metrics only |
+| `uv run python -m evals human` | $0 | Writes `evals/human_scores.json` for your blind 1-5 scores |
+| `uv run python -m evals run` | ~$0.01 | + Haiku judges: faithfulness (one batched call per week) and quality |
+| `uv run python -m evals run --final` | ~$0.05 | Quality judged by Sonnet instead (the spec's one Sonnet pass) |
+| `uv run python -m evals run --save-baseline` / `--gate` | ~$0.01 | Save the baseline / exit 1 on a regression |
+
+| Metric | How |
+|---|---|
+| `signals.recall`, `material_recall`, `week2_material_recall` | Expected signals (ground truth) a scout reported: one detail contains every expected substring |
+| `signals.kind_accuracy` | Found signals carrying the expected kind |
+| `signals.high_impact_precision` | Signals rated `high` that match a material / must-surface expectation (plain precision would punish true but unlisted signals) |
+| `routing.accuracy` | Published route = expected route |
+| `faithfulness.ids`, `faithfulness.cited` | Every cited id exists (this week or earlier); TL;DR, threats and recommendations cite |
+| `faithfulness.judge` | Haiku: does each claim follow from the signals it cites? (supported 1, partial 0.5) |
+| `rumor.never_claimed`, `rumor.discounted` | No must-not-claim phrase outside discounted claims; the week-3 rumor listed there by id |
+| `quality.threat_levels`, `quality.week2_kolkata_first` | Threat levels vs ground truth; Kolkata leads week 2 |
+| `quality.judge` | Rubric (actionable, prioritized, Kolkata focus, concise), 1-5 mapped to 0-100 |
+
+A judged metric is gated only against a baseline judged by the same model. `evals/report.md` has the latest
+run, week by week, with every claim the judge didn't fully accept, and the M4 process comparison table.
+
 ## Later milestones' commands
 
-M8c adds the eval harness, M8d `crewai test` / `crewai train` and the checkpoint what-if.
+M8d adds `crewai test` / `crewai train` and the checkpoint what-if.
 
 ## How one weekly run flows, end to end
 
