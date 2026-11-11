@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8b (streaming, Phoenix tracing, [docs/observability.md](docs/observability.md)) done, weeks 1-2 and the deep dive traced live; M8c–d (evals, training) next.
+**Status:** M8b (streaming, Phoenix tracing, [docs/observability.md](docs/observability.md)) done; weeks 1-3 re-published under tracing with async reviews. M8c–d (evals, training) next.
 
 ## Setup
 

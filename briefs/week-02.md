@@ -1,42 +1,39 @@
-# Week 02: ShelfMitra's Kolkata sales push is the biggest threat; StockSathi cut Pro to ₹699.
+# Week 02: Kolkata threat rises: ShelfMitra adds 15 sales roles and ₹200 crore funding as StockSathi cuts Pro to ₹699.
 
 *Route: material*
 
 ## TL;DR
-- ShelfMitra is building a Kolkata sales force: 15 open roles, including 12 Field Sales Executives [ShelfMitra-2-3][ShelfMitra-2-4][ShelfMitra-2-5]. A reported ₹200 crore Series B funds eastern expansion [ShelfMitra-2-2].
-- StockSathi cut Pro from ₹999 to ₹699 a month (-30%), priced below most rivals [StockSathi-2-1][StockSathi-2-3].
-- StockSathi's UPI Udhaar, launched 13 Oct and included in Pro, lets shops extend credit and collect over UPI [StockSathi-2-2][StockSathi-2-4].
-- Dukaan at ₹799 now sits ₹100 above StockSathi Pro, and StockSathi's UPI credit feature removes our UPI credit edge [StockSathi-2-1][StockSathi-2-2].
-- BahiBook's changes are minor: pricing is unchanged and an A5 invoice print fix shipped [BahiBook-2-1][BahiBook-2-2].
+- ShelfMitra opened 15 Kolkata sales roles (12 Field Sales Executives, 2 Territory Sales Managers, 1 Regional Sales Head), none listed in week 1 [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5].
+- ShelfMitra raised a ₹200 crore Series B led by Deccan Growth Partners to expand into eastern India [ShelfMitra-2-2].
+- StockSathi cut Pro from ₹999 to ₹699 a month (−30%) and launched UPI Udhaar, store credit collected via UPI with reminders, included in Pro [StockSathi-2-1] [StockSathi-2-2].
+- BahiBook's pricing and Pune hiring are unchanged; its only product change is an A5 PDF invoice print fix [BahiBook-2-1] [BahiBook-2-2] [BahiBook-2-3].
 
 ## Since last week
-- StockSathi cut Pro from ₹999 (week 1) to ₹699 a month, while Basic and Business stayed unchanged [StockSathi-2-1].
-- StockSathi launched UPI Udhaar on 2026-10-13, included in Pro [StockSathi-2-2].
-- ShelfMitra reportedly raised a ₹200 crore Series B to expand into eastern India [ShelfMitra-2-2].
-- ShelfMitra opened 15 Kolkata sales roles (12 Field Sales Executives, 2 Territory Sales Managers, 1 Regional Sales Head, East) [ShelfMitra-2-3][ShelfMitra-2-4][ShelfMitra-2-5].
-- ShelfMitra added a Bulk GST invoice export on 2026-10-15 [ShelfMitra-2-1].
-- StockSathi app-store rating fell from 4.4 to 4.3 across 18,469 reviews [StockSathi-2-6].
-- BahiBook fixed A5 PDF invoice printing on 2026-10-14 [BahiBook-2-2].
-- Unchanged from week 1: BahiBook pricing [BahiBook-2-1], BahiBook Pune hiring [BahiBook-2-3], StockSathi careers page [StockSathi-2-5], ShelfMitra Mumbai roles [ShelfMitra-2-6][ShelfMitra-2-7] and ShelfMitra plans [ShelfMitra-2-8].
+- Week 1 (briefs/week-01.md) rated all three rivals low; this week ShelfMitra and StockSathi are rated high, and BahiBook stays low.
+- StockSathi Pro moved from ₹999 to ₹699 (−30%); Basic stays at ₹499 [StockSathi-2-1] [StockSathi-2-3].
+- StockSathi's UPI Udhaar launch is new this week [StockSathi-2-2]; its app rating fell from 4.4 to 4.3 [StockSathi-2-5].
+- ShelfMitra's Kolkata hiring is new this week; week 1 listed only Mumbai roles [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5].
+- ShelfMitra's ₹200 crore Series B and Bulk GST invoice export are new [ShelfMitra-2-2] [ShelfMitra-2-1].
+- Unchanged this week: StockSathi's careers page [StockSathi-2-6], ShelfMitra's Mumbai roles and prices [ShelfMitra-2-6] [ShelfMitra-2-7] [ShelfMitra-2-8] [ShelfMitra-2-9] [ShelfMitra-2-10], and BahiBook's Solo and Plus prices and Pune opening [BahiBook-2-1] [BahiBook-2-3].
 
 ## Threats
 | Competitor | Threat | Why |
 |---|---|---|
-| BahiBook | **low** | Pricing is unchanged [BahiBook-2-1] and the A5 invoice fix is low impact [BahiBook-2-2]. Pune hiring [BahiBook-2-3] is outside Kolkata. |
-| ShelfMitra | **high** | A reported ₹200 crore Series B for eastern expansion [ShelfMitra-2-2] plus 15 open Kolkata sales roles [ShelfMitra-2-3][ShelfMitra-2-4][ShelfMitra-2-5] points to a field push in our home market. This meets our battlecard trigger for a field response. |
-| StockSathi | **high** | Pro cut 30% to ₹699 [StockSathi-2-1] and now includes UPI Udhaar [StockSathi-2-2], which undercuts Dukaan by ₹100 and overlaps our UPI credit position. Our Khata on UPI is not yet available. |
+| BahiBook | **low** | BahiBook's only new item is an A5 PDF print fix [BahiBook-2-2], and its pricing [BahiBook-2-1] and Pune hiring [BahiBook-2-3] are unchanged. Its GSTR-1 webinar [BahiBook-2-4] does not raise the threat. |
+| ShelfMitra | **high** | ShelfMitra raised a ₹200 crore Series B to expand into eastern India [ShelfMitra-2-2] and added 15 Kolkata sales openings [ShelfMitra-2-3] [ShelfMitra-2-4] [ShelfMitra-2-5], pointing to a direct push into our Kolkata market. The Bulk GST invoice export [ShelfMitra-2-1] is context only. |
+| StockSathi | **high** | StockSathi cut Pro from ₹999 to ₹699 (−30%) while keeping unlimited items, GST billing and 2 devices [StockSathi-2-1], and launched UPI Udhaar, included in Pro [StockSathi-2-2]. Its rating slipping to 4.3 on sync delays [StockSathi-2-5] is supporting context only. |
 
 ## Recommendations
 | Action | Owner | Urgency | Signals |
 |---|---|---|---|
-| Decide this week whether to hold Dukaan at ₹799 and the ₹649 floor against StockSathi Pro at ₹699. Set a ₹639 watch level on StockSathi Pro, which is 20% below Dukaan's ₹799 and triggers Leadership escalation. | Leadership | this week | StockSathi-2-1, StockSathi-2-2 |
-| Accelerate the Khata on UPI pull-forward from Q2 2027, and offer early access to Kolkata customers who extend udhaar. | Product | this month | StockSathi-2-2, StockSathi-2-4 |
-| Assign named field reps from the 22-person Kolkata team to our top 200 accounts within two weeks, per the Kolkata defence rule. | Sales | this week | ShelfMitra-2-3, ShelfMitra-2-4, ShelfMitra-2-5 |
+| Decide whether to hold the Dukaan price at ₹799 versus the ₹649 floor in response to StockSathi's Pro cut; escalate to Leadership if a rival reaches ₹639.20 or lower (20% below Dukaan). | Leadership | this week | StockSathi-2-1 |
+| Accelerate the Q2 2027 Khata on UPI roadmap item in light of StockSathi's UPI Udhaar, and offer early access to existing customers. | Product | this month | StockSathi-2-2 |
+| Assign named field reps from the 22-person Kolkata team to our top 200 accounts within two weeks to defend against ShelfMitra field teams. | Sales | this week | ShelfMitra-2-2, ShelfMitra-2-3, ShelfMitra-2-4, ShelfMitra-2-5 |
 
 ## Watchlist
-- StockSathi-2-6: app-store rating dipped from 4.4 to 4.3 on 18,469 reviews, with sync delays still the top complaint.
-- BahiBook-2-4: blog announced a free GSTR-1 webinar for first-time filers; blog-only source at 0.6 credibility.
-- ShelfMitra-2-1: Bulk GST invoice ZIP export gives partial GST overlap only; no Kolkata-specific signal yet.
+- BahiBook's free one-hour GSTR-1 webinar for first-time filers is an early content signal at 0.6 credibility [BahiBook-2-4].
+- ShelfMitra's careers header still reads 'Well-funded, enterprise-leaning retail suite, expanding east' [ShelfMitra-2-11].
+- ShelfMitra's Bulk GST invoice export is a new feature with medium impact and no measured adoption yet [ShelfMitra-2-1].
 
 ## Discounted claims
 - None.

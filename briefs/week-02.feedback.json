@@ -1,17 +1,17 @@
 {
   "week": 2,
-  "state_id": "941021b4-1632-4d20-908c-366780c64d9d",
+  "state_id": "9a7ef39f-c88a-40c3-8543-4254e54f0796",
   "reviews": [
     {
       "round": 1,
       "outcome": "approve",
-      "feedback": "Approved.",
-      "at": "2026-11-01T16:30:49.893060",
+      "feedback": "approve",
+      "at": "2026-11-11T17:28:53.342134",
       "metadata": {
         "stage": "editorial"
       },
-      "headline_reviewed": "ShelfMitra's Kolkata sales push is the biggest threat; StockSathi cut Pro to ₹699.",
-      "changed_by_lessons": true
+      "headline_reviewed": "Kolkata threat rises: ShelfMitra adds 15 sales roles and ₹200 crore funding as StockSathi cuts Pro to ₹699.",
+      "changed_by_lessons": false
     }
   ]
 }

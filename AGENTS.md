@@ -12,11 +12,11 @@
 
 ## Where things stand (handoff)
 
-- **Done: M0–M7, M8a and M8b** (live: weeks 1-2 and the manager deep dive traced; week 3 not yet), one commit each (`git log`). The README's status line and its per-milestone sections say what
+- **Done: M0–M7, M8a and M8b** (weeks 1-3 re-published under tracing, async reviews, approved first time), one commit each (`git log`). The README's status line and its per-milestone sections say what
   each milestone added and how to run it; `docs/decisions.md` has every decision and live finding, numbered.
 - **Next: M8c** (eval harness, baseline), then M8d (`crewai test` / `eval` / `train`, checkpoint what-if), M9.
-  Weeks 1-2 were published with editor's notes (empty review answers, decisions #106); week 3 isn't run yet.
-  M8c evaluates all three weeks, so it needs week 3 (and, ideally, weeks 1-2 re-run with real reviews).
+  Live reviews: use `--review async` + `compintel review <id> "approve"`; the console prompt received only empty
+  answers on the developer's terminal (decisions #106, unexplained; not reproducible here).
   M8 was split into stages at the developer's request: each ends with commands for the developer to run.
 - **Spend**: `uv run compintel costs` (about $1.34 of the $12 cap after M7). The repo moved machines after M7:
   `runs/costs.jsonl` starts with one `carried-forward` row of $1.34 for the earlier spend.
