@@ -308,7 +308,12 @@ def run(
         stream_tokens(True)  # LLMs built from here on stream; the crews build theirs during the run
         printer, live = StreamPrinter(console), False  # the panel would redraw over the streamed text
     with _traced(trace), _measure(f"week {week}", live=live) as done:
-        flow = run_week(week, deep_dive_variant=variant, resume=resume, reviewer=reviewer, on_frame=printer)
+        try:
+            flow = run_week(
+                week, deep_dive_variant=variant, resume=resume, reviewer=reviewer, on_frame=printer
+            )
+        except ValueError as e:  # refused before anything ran: which week to run or resume first
+            raise typer.BadParameter(str(e)) from e
         done(flow)
 
 

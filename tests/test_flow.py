@@ -195,3 +195,14 @@ def test_plot_draws_every_router_branch(tmp_path):
     labels = ("nothing_new", "routine", "material", "load_knowledge_digest", "run_deep_dive", "publish")
     for label in (*labels, "editorial_review", "approve", "revise", "reject", "revised", "revision_limit"):
         assert label in script
+
+
+def test_a_week_waits_for_the_previous_weeks_unfinished_run(world, stubs):
+    """Live M8b, twice: week 3 forked the older published week 2 while the re-run of week 2 awaited review."""
+    from compintel import review
+
+    run_week(1)
+    run_week(2)
+    paused = run_week(2, reviewer=review.PendingReview())  # re-run of week 2, waiting for its review
+    with pytest.raises(ValueError, match=f"week 2 has an unfinished run \\({paused.state.id}\\)"):
+        run_week(3)

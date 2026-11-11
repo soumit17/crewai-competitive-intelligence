@@ -618,6 +618,9 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 107. **The crew planner gets its own output budget** (`config.PLANNER_MAX_TOKENS = 16384`, not the 8192
      long-output budget): crewai asks it for "an extremely detailed" plan for all six tasks in one JSON answer.
      Haiku 5.5 allows 128K output, and its thinking counts against `max_tokens`.
+108. **A week refuses to start while the previous week has an unfinished run** (`in_progress` in
+     `runs/state_index.json`): it would otherwise fork the older *published* state without a word. The error
+     says to answer the review or `--resume` first.
 
 ## M8b findings
 
@@ -655,7 +658,10 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 - **The crew planner truncation recurred and failed live week 2** (`--variant sequential`): its JSON stopped
   at ~17.6k characters twice (crewai retried once), so the deep dive and the week failed (decision 107).
   Week 3, run next, forked the *old* published week 2; its pending review was set aside, not answered.
-- **Test suite: 216 tests, ~80 s.**
+- **It happened again**: week 2's resumed run paused for review (the planner was cut off once more, at 35.6k
+  characters even with 16384 tokens, and crewai's retry succeeded), and week 3 was started before that review
+  was answered, forking the old week 2 a second time. Now refused (decision 108).
+- **Test suite: 217 tests, ~80 s.**
 
 ## Open questions for the developer
 

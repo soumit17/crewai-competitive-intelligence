@@ -97,7 +97,16 @@ class CompetitiveIntelFlow(Flow[CIState]):
         inputs = dict(inputs or {})
         week = int(inputs.get("week", 1))
         if week > 1 and kwargs.get("restore_from_state_id") is None:
-            previous = read_state_index()["published"].get(str(week - 1))
+            index = read_state_index()
+            # Live M8b, twice: week 3 started while week 2's re-run waited for its review (or had crashed),
+            # so it silently forked the *older* published week 2. Finish the newer run first.
+            unfinished = index["in_progress"].get(str(week - 1))
+            if unfinished is not None:
+                raise ValueError(
+                    f"week {week - 1} has an unfinished run ({unfinished}): answer its review (compintel "
+                    f"pending) or finish it with --resume first; week {week} would build on the older one"
+                )
+            previous = index["published"].get(str(week - 1))
             if previous is None:
                 raise ValueError(f"no published state for week {week - 1}; run week {week - 1} first")
             kwargs["restore_from_state_id"] = previous
