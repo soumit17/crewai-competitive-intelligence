@@ -189,3 +189,11 @@ def test_knowledge_sources_retrieve_from_markdown_and_pdf(on):
         r["content"] for r in k.query(["GST e-invoicing Q1 2027"], results_limit=5, score_threshold=0.0)
     )
     assert "e-invoicing" in roadmap
+
+
+def test_the_crew_planner_has_room_for_six_detailed_plans(on):
+    """Live M8b: the planner's JSON outgrew the 8192-token long-output budget and failed week 2."""
+    from compintel.config import PLANNER_MAX_TOKENS
+
+    crew = DeepDiveCrew(variant="sequential").crew()
+    assert crew.planning and crew.planning_llm.max_tokens == PLANNER_MAX_TOKENS > LONG_OUTPUT_MAX_TOKENS

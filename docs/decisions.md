@@ -615,6 +615,9 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
      same `HumanFeedbackRequested/ReceivedEvent`s and panel pauses, but the prompt says "Enter alone = revise",
      an empty answer is asked once more, and the received event carries the final answer. Re-asking after
      crewai's `input()` would have been too late: crewai emits the received event with the first answer.
+107. **The crew planner gets its own output budget** (`config.PLANNER_MAX_TOKENS = 16384`, not the 8192
+     long-output budget): crewai asks it for "an extremely detailed" plan for all six tasks in one JSON answer.
+     Haiku 5.5 allows 128K output, and its thinking counts against `max_tokens`.
 
 ## M8b findings
 
@@ -647,7 +650,12 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   dive's crew planner ran out of tokens mid-JSON (`PlannerTaskPydanticOutput`, EOF at character 18,206).
   crewai reports usage only on `LLMCallCompletedEvent`, so the ledger under-counts billed tokens of failed
   calls. Otherwise trace and ledger agree: $0.1374 vs $0.1379 for the same runs.
-- **Test suite: 215 tests, ~80 s.**
+- **Async review works where the console prompt didn't**: week 1 re-run with `--review async` was approved at
+  the first review (`compintel review <id> "approve"`), no editor's note.
+- **The crew planner truncation recurred and failed live week 2** (`--variant sequential`): its JSON stopped
+  at ~17.6k characters twice (crewai retried once), so the deep dive and the week failed (decision 107).
+  Week 3, run next, forked the *old* published week 2; its pending review was set aside, not answered.
+- **Test suite: 216 tests, ~80 s.**
 
 ## Open questions for the developer
 

@@ -1,13 +1,13 @@
-# Week 01: StockSathi's ₹499 Basic plan is the top Kolkata threat to KiranaCloud's ₹799 plan
+# Week 01: Week 1: all three rivals rated low threat; StockSathi's ₹499 Basic and ₹999 Pro are the price benchmarks to watch.
 
 *Route: routine*
 
 ## TL;DR
-- For Kolkata, StockSathi's Basic plan at ₹499/month, with GST billing and 500 items, is the biggest threat because it prices below KiranaCloud's ₹799 [StockSathi-1-1].
-- BahiBook's Solo plan at ₹399/month for single-counter shops undercuts KiranaCloud's ₹799 Dukaan plan for the same customer type [BahiBook-1-1].
-- ShelfMitra's Starter at ₹1,299/month and multi-store Growth tier sit above KiranaCloud's price, which limits direct overlap [ShelfMitra-1-1].
-- StockSathi shipped faster sync on 2G networks on 2026-10-08, with sync payloads 40% smaller [StockSathi-1-4].
-- BahiBook fixed per-invoice GST rounding on 2026-10-07 [BahiBook-1-2], and reports 50,000 users in Maharashtra, mostly single-counter shops [BahiBook-1-4].
+- StockSathi's Basic (₹499/month, 500 items, GST billing) and Pro (₹999/month, unlimited items, GST billing) are the lowest entry prices tracked this week [StockSathi-1-1][StockSathi-1-2].
+- StockSathi's recent launches are low impact: 2G sync with 40% smaller payloads, and dark mode [StockSathi-1-4][StockSathi-1-5].
+- ShelfMitra's new purchase-order approvals target multi-store chains, not single kirana stores [ShelfMitra-1-4].
+- All of ShelfMitra's open roles are in Mumbai: 2 Backend Engineers and 1 Product Designer [ShelfMitra-1-5][ShelfMitra-1-6].
+- BahiBook's 50,000-user base is reported in Maharashtra, with no Kolkata evidence [BahiBook-1-4].
 
 ## Since last week
 - First brief: no earlier week to compare.
@@ -15,21 +15,21 @@
 ## Threats
 | Competitor | Threat | Why |
 |---|---|---|
-| BahiBook | **medium** | Its Solo plan at ₹399/month for single-counter shops [BahiBook-1-1] undercuts KiranaCloud's ₹799 price for the same customer type, a medium-impact signal. Its 50,000-user base in Maharashtra [BahiBook-1-4] is a credible but geographically distant signal, and the GST rounding fix and Pune hiring [BahiBook-1-2, BahiBook-1-3] are low impact. |
-| ShelfMitra | **low** | Its Starter plan at ₹1,299/month sits above KiranaCloud's price and its Growth tier targets multi-store chains [ShelfMitra-1-1], so direct overlap with single-store kirana owners is limited. The purchase-order approval feature [ShelfMitra-1-2] and Mumbai hiring [ShelfMitra-1-3] are low impact for Kolkata. |
-| StockSathi | **medium** | Its new Basic plan at ₹499/month with GST billing undercuts KiranaCloud's ₹799 Dukaan plan, a medium-impact pricing signal [StockSathi-1-1]. The Pro and Business tiers [StockSathi-1-2, StockSathi-1-3] and the 2G sync and dark mode launches [StockSathi-1-4, StockSathi-1-5] add little beyond that price pressure. |
+| BahiBook | **low** | BahiBook's first recorded Solo and Plus prices are a baseline with no week-on-week change [BahiBook-1-1], its GST rounding fix is low impact [BahiBook-1-2], and its single open role is in Pune [BahiBook-1-3]. Its 50,000-user base is reported only in Maharashtra, with no evidence of Kolkata presence [BahiBook-1-4], so the threat stays low. |
+| ShelfMitra | **low** | ShelfMitra's purchase-order approval feature targets multi-store chains rather than single kirana stores [ShelfMitra-1-4], and all its open roles are in Mumbai [ShelfMitra-1-5][ShelfMitra-1-6]. Its Starter and Growth prices are baseline only [ShelfMitra-1-1][ShelfMitra-1-2], so the threat stays low. |
+| StockSathi | **low** | This week's StockSathi signals are baseline pricing that cannot show change, low-impact 2G sync and dark mode launches, and two Bengaluru hiring listings [StockSathi-1-1][StockSathi-1-2][StockSathi-1-3][StockSathi-1-4][StockSathi-1-5][StockSathi-1-6][StockSathi-1-7]. The festive blog post has no impact [StockSathi-1-8]. |
 
 ## Recommendations
 | Action | Owner | Urgency | Signals |
 |---|---|---|---|
-| Leadership to decide this week whether the ₹799 Dukaan plan needs a response to BahiBook's ₹399 Solo plan and StockSathi's ₹499 Basic plan for single-counter shops. | Leadership | this week | BahiBook-1-1, StockSathi-1-1 |
-| Product to track StockSathi's 2G sync improvement against KiranaCloud's sync performance on weak Kolkata networks. | Product | watch | StockSathi-1-4 |
-| Sales to take no Kolkata action on ShelfMitra's multi-store pricing for now; revisit if its plans move toward single-store owners. | Sales | this month | ShelfMitra-1-1 |
+| Prepare Sales talking points for Kolkata prospects comparing StockSathi's ₹499 Basic and ₹999 Pro, both with GST billing. | Sales | this month | StockSathi-1-1, StockSathi-1-2 |
+| Review StockSathi's 2G sync and dark mode launches against the product roadmap; no change is needed yet. | Product | this month | StockSathi-1-4, StockSathi-1-5 |
+| Check ShelfMitra's hiring snapshots for any listings outside Mumbai before changing its threat rating. | Leadership | watch | ShelfMitra-1-5, ShelfMitra-1-6 |
 
 ## Watchlist
-- BahiBook-1-4: reported 50,000-user Maharashtra base; watch for any move into West Bengal.
-- StockSathi-1-7: pre-Diwali stocking checklist content; watch whether it precedes seasonal pricing or promotions.
-- StockSathi-1-6 and ShelfMitra-1-3: Bengaluru and Mumbai hiring; no Kolkata signal yet.
+- Whether BahiBook's Maharashtra user growth reaches other regions [BahiBook-1-4].
+- StockSathi's festive stocking checklist blog is an early content signal with no measured impact [StockSathi-1-8].
+- Any new city listings in ShelfMitra's careers snapshots beyond its Mumbai roles [ShelfMitra-1-5][ShelfMitra-1-6].
 
 ## Discounted claims
-- None.
+- Unverified: ShelfMitra's careers header describes it as expanding east, but no eastern roles are listed this week [ShelfMitra-1-7].

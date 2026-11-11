@@ -1,28 +1,17 @@
 {
   "week": 1,
-  "state_id": "9b222382-54c8-46d5-96d2-fe981e1987b2",
+  "state_id": "84635ae7-eac5-4d2b-a405-98457136a85f",
   "reviews": [
     {
       "round": 1,
-      "outcome": "revise",
-      "feedback": "Always lead with the single biggest threat to Kolkata, and keep the headline under 15 words.",
-      "at": "2026-11-01T16:23:41.865163",
-      "metadata": {
-        "stage": "editorial"
-      },
-      "headline_reviewed": "Week 1: BahiBook Solo and StockSathi Basic undercut KiranaCloud's ₹799 plan; ShelfMitra is a low threat.",
-      "changed_by_lessons": false
-    },
-    {
-      "round": 2,
       "outcome": "approve",
-      "feedback": "Approved.",
-      "at": "2026-11-01T16:24:11.195283",
+      "feedback": "approve",
+      "at": "2026-11-11T16:20:52.881771",
       "metadata": {
         "stage": "editorial"
       },
-      "headline_reviewed": "StockSathi's ₹499 Basic plan is the top Kolkata threat to KiranaCloud's ₹799 plan",
-      "changed_by_lessons": true
+      "headline_reviewed": "Week 1: all three rivals rated low threat; StockSathi's ₹499 Basic and ₹999 Pro are the price benchmarks to watch.",
+      "changed_by_lessons": false
     }
   ]
 }

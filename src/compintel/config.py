@@ -108,6 +108,11 @@ def make_llm(final: bool = False, max_tokens: int | None = None) -> LLM:
 # live (a truncated report; an empty answer after thinking used up the budget). 4096 still truncated a week-3
 # Brief. Worst case at 8192 on Haiku: $0.004 per call.
 LONG_OUTPUT_MAX_TOKENS = 8192
+# crewai's crew planner is asked for "an extremely detailed, step-by-step plan" for every task at once
+# (utilities/planning_handler.py), and its JSON outgrew 8192 twice on week 2 (M8b live: truncated at ~17.6k
+# characters, the deep dive and the week failed). Haiku 5.5 allows 128K output; thinking counts against it.
+# Worst case at 16384 on Haiku: $0.008.
+PLANNER_MAX_TOKENS = 16384
 
 # Every agent gets explicit limits (spec Rule 8): CrewAI's ReAct loop is the main way spend runs away.
 AGENT_LIMITS: dict[str, Any] = {"max_iter": 8, "max_rpm": 20, "max_execution_time": 180}

@@ -40,5 +40,5 @@
   - Tracing: Phoenix's server runs under `uvx` (not in the venv). Adding a span processor to Phoenix's
     TracerProvider needs `replace_default_processor=False`, or nothing is exported.
   - `crewai_event_bus.scoped_handlers()` hides *every* handler (the cost listener too) while it lasts: tests only.
-- **Tests**: 215 passing (`uv run pytest`, about 80 s; the spec's target is 60 s). `uv run ruff check .`,
+- **Tests**: 216 passing (`uv run pytest`, about 80 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.

@@ -29,7 +29,14 @@ from crewai.utilities.pydantic_schema_utils import generate_model_description
 from crewai_tools import FileReadTool
 
 from compintel import knowledge, memory
-from compintel.config import AGENT_LIMITS, LONG_OUTPUT_MAX_TOKENS, embedder_config, get_settings, make_llm
+from compintel.config import (
+    AGENT_LIMITS,
+    LONG_OUTPUT_MAX_TOKENS,
+    PLANNER_MAX_TOKENS,
+    embedder_config,
+    get_settings,
+    make_llm,
+)
 from compintel.guardrails import (
     NO_RUMOR_AS_FACT,
     any_high_threat,
@@ -336,7 +343,7 @@ class DeepDiveCrew:
             # Crew planning: before kickoff, a planner writes a step plan into every task description.
             # planning_llm explicitly: crewai's default planner model is gpt-5.4-mini.
             planning=True,
-            planning_llm=self._llm(),
+            planning_llm=self.fake or make_llm(max_tokens=PLANNER_MAX_TOKENS),  # see PLANNER_MAX_TOKENS
             # Crew-level knowledge: all of KiranaCloud's docs, for every agent (and the manager).
             knowledge_sources=knowledge.crew_sources(),
             embedder=embedder_config(),
