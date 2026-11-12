@@ -781,6 +781,35 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   opt-in (`trained_agents_file`), not used by the flow.
 - **Test suite: 247 tests, ~85 s.**
 
+## M9 decisions (polish, fresh clone)
+
+127. **The faithfulness judge reads last week's published brief** (prompt v2, `faithfulness.PROMPT_VERSION`),
+     allowed only for claims about what that brief said. v1 judged "week 2 rated StockSathi high" unsupported
+     in both M8d briefs though it was true: the writer reads `briefs/week-0N.md`, the judge didn't. The prompt
+     version is part of the judge's recorded name, so the gate skips `faithfulness.judge` until a baseline is
+     saved with v2.
+128. **A headline's own "Week 2:" is dropped when rendering** (`render_brief.headline`), in code, not in the
+     prompt: a prompt change would need new evals.
+129. **`P3_REVIEW=console|async`** picks the reviewer when `crewai run` starts the week (no `--review` flag
+     there); `compintel run --review` still decides for the CLI. Needed for the fresh-clone check on a
+     terminal where the console prompt received only empty answers (#106).
+130. **Ruff excludes the spec** (`extend-exclude`): `ruff format .` reformats code blocks in markdown and had
+     rewritten it.
+131. **Cost per weekly run is measured, not estimated**: ledger rows summed over each published run's steps
+     (`runs/steps.jsonl` timestamps): routine $0.025-0.028, material $0.074 (README, Results). Week 2's
+     published run resumed after a crash, so its scouting is the first attempt's.
+
+## M9 findings
+
+- **Fresh clone** (local `git clone`, then `uv sync`, `scripts/gen_world.py`, `pytest`): the generator
+  rewrites exactly the committed `data/` and `knowledge/` (clean `git status`), and the suite passes with no
+  OpenAI key.
+- **The test suite misses the spec's 60 s**: ~82 s for 250 tests on this 2-core machine. The time is crewai
+  object construction (pydantic schema building for agents, tools and tasks, ~1 s per crew-running test) and
+  real subprocesses (MCP servers over stdio, the async review resumed in another process). `pytest-xdist`
+  (not in spec §19.2, so not added) measured 63 s with 2 workers here; more cores would do better.
+- **Publishing is a third of a routine week's cost**: memory saves each fact with an LLM analysis.
+
 ## Open questions for the developer
 
 - **Coding-agent skills:** `npx skills add crewaiinc/skills` (from docs `/en/skills`). Not installed; optional.

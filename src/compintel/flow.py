@@ -90,8 +90,10 @@ class CompetitiveIntelFlow(Flow[CIState]):
         after
         the first, fork last week's published state unless a `restore_from_state_id` is given."""
         bootstrap()
-        if flow_config.hitl_provider is None:
-            review.use(review.ConsoleReview())  # shows the rendered brief, not the Brief's repr
+        if flow_config.hitl_provider is None:  # not set by the CLI's --review: `crewai run`, P3_REVIEW
+            async_review = get_settings().p3_review == "async"
+            # ConsoleReview shows the rendered brief, not the Brief's repr.
+            review.use(review.PendingReview() if async_review else review.ConsoleReview())
         if kwargs.get("from_checkpoint") is not None:  # crewai's checkpoint restore path: nothing to add
             return super().kickoff(inputs=inputs, **kwargs)
         inputs = dict(inputs or {})

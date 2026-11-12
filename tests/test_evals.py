@@ -141,6 +141,17 @@ def test_the_judge_sees_our_own_facts_and_earlier_weeks():
     assert "## Earlier weeks' signals\n[StockSathi-1-2] (credibility 0.9, impact medium" in prompt
 
 
+def test_the_judge_sees_last_weeks_published_brief():
+    """Live M8d: "week 2 rated StockSathi high" was judged unsupported twice; it was true, but the judge
+    hadn't seen the previous brief the writer reads (prompt v2)."""
+    week1 = run(1, b=brief(1, headline="Quiet week one"), route="routine")
+    llm = faith_judge_any()
+    scoring.evaluate([week1, run()], faith_llm=llm, samples=1)
+    first, second = (c["messages"][-1]["content"] for c in llm.calls)
+    assert "## Last week's published brief\n(none: week 1)" in first
+    assert "## Last week's published brief\n# Week 01: Quiet week one" in second
+
+
 def test_our_facts_are_the_knowledge_bases_markdown(world):
     facts = faithfulness.our_facts()
     assert "₹799" in facts and "Khata on UPI" in facts

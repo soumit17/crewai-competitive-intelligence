@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from compintel.config import PROJECT_ROOT, get_settings
+from compintel.tools.render_brief import render_markdown
 from evals import compare, faithfulness, quality, signals
 from evals.data import WeekRun
 
@@ -29,6 +30,7 @@ def evaluate(runs: list[WeekRun], faith_llm: Any = None, quality_llm: Any = None
     known = {}
     context = faithfulness.our_facts() if faith_llm is not None else ""
     per_week: dict[int, dict] = {}
+    briefs = {r.week: render_markdown(r.brief) for r in runs}  # what the writer read as "the previous brief"
     for run in sorted(runs, key=lambda r: r.week):
         known.update(run.signals)  # this week's and every earlier week's signals
         per_week[run.week] = {
@@ -39,8 +41,9 @@ def evaluate(runs: list[WeekRun], faith_llm: Any = None, quality_llm: Any = None
             "checks": quality.week_checks(run),
         }
         if faith_llm is not None:
+            previous = briefs.get(run.week - 1, "")
             per_week[run.week]["faithfulness_judge"] = faithfulness.judge_week(
-                run, dict(known), faith_llm, samples=samples, context=context
+                run, dict(known), faith_llm, samples=samples, context=context, previous=previous
             )
         if quality_llm is not None:
             per_week[run.week]["quality_judge"] = quality.judge_week(run, quality_llm, samples=samples)

@@ -80,3 +80,15 @@ def test_render_brief_is_a_result_as_answer_tool_reading_the_approved_draft():
 def test_news_search_says_plainly_when_there_is_nothing(world):
     out = NewsSearchTool().run(company="BahiBook", week=3)
     assert out.startswith("No news articles about BahiBook in week 3") and "don't search again" in out
+
+
+def test_the_title_adds_the_week_once():
+    from compintel.models import Brief
+    from compintel.tools.render_brief import render_markdown
+    from tests.test_guardrails import GOOD
+
+    for own in ("Week 2: ", "week 02 - ", "WEEK 2 — "):
+        md = render_markdown(Brief.model_validate(GOOD | {"headline": own + "StockSathi undercuts us"}))
+        assert md.startswith("# Week 02: StockSathi undercuts us\n")
+    other = render_markdown(Brief.model_validate(GOOD | {"headline": "Week 1's price holds"}))
+    assert other.startswith("# Week 02: Week 1's price holds")  # another week's mention stays

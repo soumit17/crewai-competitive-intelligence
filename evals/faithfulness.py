@@ -97,13 +97,15 @@ class FaithfulnessVerdicts(BaseModel):
 
 
 JUDGE_INSTRUCTIONS = """You check a competitive-intelligence brief written for KiranaCloud ("we", "our")
-against its sources. Each numbered claim below lists the competitor signals it cites. Two more sources are
-allowed: KiranaCloud's own facts (its pricing, roadmap, team), and the signals of earlier weeks, for claims
-about what changed or is new. Judge only from these sources, not from what you know.
+against its sources. Each numbered claim below lists the competitor signals it cites. Three more sources
+are allowed: KiranaCloud's own facts (its pricing, roadmap, team); the signals of earlier weeks, for claims
+about what changed or is new; and last week's published brief, only for claims about what that brief said
+(its threat levels, what it reported). Judge only from these sources, not from what you know.
 
 - supported: every fact in the claim (numbers, prices, places, names, direction of a change) is stated in or
-  directly follows from the cited signals, KiranaCloud's facts, or earlier weeks' signals. A recommendation or
-  threat level is supported when the sources give a reasonable basis for it.
+  directly follows from the cited signals, KiranaCloud's facts, earlier weeks' signals, or (for what last
+  week's brief said) that brief. A recommendation or threat level is supported when the sources give a
+  reasonable basis for it.
 - partial: mostly supported, but one detail goes beyond the sources.
 - unsupported: a fact contradicts the sources or appears in none of them, or the claim states as fact
   something a signal with credibility below 0.5 only reports.
@@ -111,6 +113,10 @@ about what changed or is new. Judge only from these sources, not from what you k
 Return one verdict per claim, using its number."""
 
 VERDICT_SCORE = {"supported": 1.0, "partial": 0.5, "unsupported": 0.0}
+# Part of the judge's recorded name: a baseline judged with another prompt isn't gated against
+# (scoring.comparable).
+# v2 (M9): last week's published brief is a source; v1 flagged true "week 2 rated StockSathi high" claims.
+PROMPT_VERSION = 2
 
 
 def our_facts() -> str:
@@ -126,10 +132,13 @@ def signal_line(s: Signal) -> str:
     return f"[{s.id}] ({fields}) {s.detail}"
 
 
-def judge_prompt(items: list[tuple[int, Claim]], known: dict[str, Signal], week: int, context: str) -> str:
+def judge_prompt(
+    items: list[tuple[int, Claim]], known: dict[str, Signal], week: int, context: str, previous: str = ""
+) -> str:
     earlier = [s for s in known.values() if int(s.id.split("-")[1]) < week]
     lines = [JUDGE_INSTRUCTIONS, "", "## KiranaCloud's own facts", context or "(none)", ""]
     lines += ["## Earlier weeks' signals", *([signal_line(s) for s in earlier] or ["(none: week 1)"]), ""]
+    lines += ["## Last week's published brief", previous.strip() or "(none: week 1)", ""]
     lines += ["## Claims", ""]
     for n, c in items:
         lines.append(f"Claim {n} ({c.section}): {c.text}")
@@ -138,14 +147,16 @@ def judge_prompt(items: list[tuple[int, Claim]], known: dict[str, Signal], week:
     return "\n".join(lines)
 
 
-def judge_week(run: WeekRun, known: dict[str, Signal], llm: Any, samples: int = 3, context: str = "") -> dict:
+def judge_week(
+    run: WeekRun, known: dict[str, Signal], llm: Any, samples: int = 3, context: str = "", previous: str = ""
+) -> dict:
     """`samples` calls over every claim that cites an existing signal (uncited claims are counted by `ids`);
     each claim scores the mean of its samples. Live M8c: one sample per run moved the week's score by up
     to 9 points between identical runs, more than the gate's 3."""
     items = [(n, c) for n, c in enumerate(claims(run.brief), 1) if any(i in known for i in c.ids)]
     if not items:
         return {"judged": 0, "points": 0.0, "samples": samples, "verdicts": []}
-    prompt = judge_prompt(items, known, run.week, context)
+    prompt = judge_prompt(items, known, run.week, context, previous)
     rounds: list[dict[int, ClaimVerdict]] = []
     for _ in range(samples):
         raw = llm.call([{"role": "user", "content": prompt}], response_model=FaithfulnessVerdicts)

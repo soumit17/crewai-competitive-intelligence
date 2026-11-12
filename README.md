@@ -5,7 +5,52 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M0–M8 done (M8d: `crewai test` / `crewai train` with Anthropic, checkpoint what-if). Next: M9 (polish, results, fresh-clone check).
+**Status:** M0–M9 done. Results below; how each milestone works further down; the learning journal is the developer's (`notes/`).
+
+## Results
+
+Three weeks of a fictional market, run live on Claude Haiku 5.5 (the published runs; scored by `python -m evals
+run`, full report in [evals/report.md](evals/report.md)).
+
+| Week | Story | Route (expected) | Key signals found | Threat levels vs truth | Claims the judge didn't fully accept | Rumor | Cost |
+|---|---|---|---:|---:|---:|---|---:|
+| 1 | quiet baseline | routine (routine) | 0/0 | 3/3 | 1 of 14 | – | $0.028 |
+| 2 | price cut, Series B, Kolkata hiring | **material** (material) | 4/4 | 3/3 | 2 of 18 | – | $0.074 |
+| 3 | one subtle signal, one rumor | routine (routine) | 4/4 | 2/3 | 1 of 20 | discounted, never claimed | $0.025 |
+
+Faithfulness (Haiku judge, 3 samples): 96.5%. Every claim cites a signal and every cited id exists. Week 3's
+miss: BahiBook rated low, ground truth medium. Week 1's unsupported claim calls StockSathi's ₹499 "the lowest
+entry price" (BahiBook's is ₹399), the kind of error only the judge catches.
+
+**Cost per weekly run** (from the cost ledger, by run):
+
+| | Scouting (3 agents) | Crew | Publish (memory saves, review) | Total | Time |
+|---|---:|---:|---:|---:|---:|
+| Routine week (1, 3) | $0.009-0.010 | $0.006-0.009 | $0.009-0.010 | **$0.025-0.028** | ~2.5 min |
+| Material week (2) | $0.023 | $0.039 (deep dive, sequential) | $0.011 | **$0.074** | ~6.5 min |
+
+Memory is a third of a routine week's cost: publishing saves each fact with an LLM analysis (scope,
+importance). The whole project, including every experiment and eval, cost $2.13 of the $12 cap.
+
+**Process comparison** (M4, week 2): sequential, `manager_llm` and `manager_agent` produced the same brief
+quality for $0.033-0.042; the managers delegated only the two tool-backed analyses, and sequential was
+fastest (its analyses run in parallel). For a fixed pipeline, the explicit process wins.
+[docs/process-comparison.md](docs/process-comparison.md).
+
+**The spec's definition of done** (§1.4):
+
+| | Status |
+|---|---|
+| Routing per week: routine, material, routine | Met (`routing.accuracy` 100) |
+| Week 3 references weeks 1-2 via memory | Met: its "since last week" compares with week 2's threat levels and knows the Kolkata roles were already open (M7) |
+| Revise loop works; `learn=True` changes the next draft | Met: one week-1 note became two lessons; week 2's headline reached review at 15 words instead of 19 (M6) |
+| Kill mid-deep-dive, resume skips finished tasks | Partly: the DeepDiveCrew can't checkpoint in crewai 1.15.33 (decisions #59). The ShortUpdateCrew resumes from its checkpoint, and `run --resume` skips a week's finished paid steps |
+| `pytest` < 60 s, no network, no model calls, no OpenAI key | 250 tests, no network or model calls, no OpenAI key; **~82 s** on a 2-core machine (decisions, M9) |
+| Week-2 material recall 100%, every claim cites, spend ≤ $12 | Met: 100%, 100%, $2.13 |
+
+**The flow**, as `crewai flow plot` draws it ([docs/flow_plot.html](docs/flow_plot.html), interactive):
+
+![The CompetitiveIntelFlow graph](docs/flow_plot.png)
 
 ## Setup
 
@@ -569,9 +614,22 @@ Results (live, Haiku 5.5, week 3; details in decisions.md "M8d findings"):
   brief was no better: faithfulness 94.1 vs 100, quality 3.0 vs 3.0, threat levels 1/3 vs 3/3. One run each,
   so it's a hint; training stays opt-in and isn't used by the weekly flow.
 
-## Later milestones' commands
+## M9: polish and the fresh-clone check
 
-M9: polish and the fresh-clone check.
+The fresh-clone check (spec M9 acceptance), in a scratch directory with its own `runs/`:
+
+```bash
+git clone <this repo> /tmp/p3-fresh && cd /tmp/p3-fresh
+uv sync && uv run python scripts/gen_world.py      # regenerates exactly the committed data/ and knowledge/
+cp <your .env> .env && uv run pytest               # 250 passed
+uv run python scripts/serve_fakeweb.py &           # the fake web the scouts scrape
+P3_REVIEW=async uv run crewai run --inputs '{"week": 1}'
+uv run compintel pending && uv run compintel review <id> "approve"
+```
+
+`crewai run` has no `--review` flag: `P3_REVIEW` (`.env`) picks the reviewer for it, `console` (default) or
+`async`. Also in M9: the faithfulness judge reads last week's published brief (prompt v2; it had flagged true
+"week 2 rated StockSathi high" claims), and a headline that starts with its own "Week 2:" renders once.
 
 ## How one weekly run flows, end to end
 

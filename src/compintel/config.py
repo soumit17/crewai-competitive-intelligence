@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     embedder_provider: str = "onnx"
     embedder_model: str = "all-MiniLM-L6-v2"
     fakeweb_url: str = "http://127.0.0.1:8765"
+    # The reviewer when no CLI flag picks one (`crewai run`): console prompt, or pause for `compintel review`.
+    p3_review: str = "console"
     # Tests point these at tmp dirs: the real ledger never sees fake data; tests read a fresh world.
     p3_runs_dir: Path = PROJECT_ROOT / "runs"
     p3_data_dir: Path = PROJECT_ROOT / "data"

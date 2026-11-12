@@ -12,13 +12,13 @@
 
 ## Where things stand (handoff)
 
-- **Done: M0–M8** (baseline in `evals/baseline.json`, `python -m evals run --gate` before merging changes to prompts or crews), one commit each (`git log`). The README's status line and its per-milestone sections say what
+- **Done: M0–M9** (baseline in `evals/baseline.json`, `python -m evals run --gate` before merging changes to prompts or crews), one commit each (`git log`). The README's status line and its per-milestone sections say what
   each milestone added and how to run it; `docs/decisions.md` has every decision and live finding, numbered.
-- **Next: M9** (polish, README results, fresh-clone check; the journal is the developer's).
-  Live reviews: use `--review async` + `compintel review <id> "approve"`; the console prompt received only empty
+- **Next:** the developer's journal (`notes/p3-journal.md`); stretch goals (spec §22) if wanted.
+  Live reviews: use `--review async` (or `P3_REVIEW=async` for `crewai run`) + `compintel review <id> "approve"`; the console prompt received only empty
   answers on the developer's terminal (decisions #106, unexplained; not reproducible here).
   M8 was split into stages at the developer's request: each ends with commands for the developer to run.
-- **Spend**: `uv run compintel costs` (about $1.34 of the $12 cap after M7). The repo moved machines after M7:
+- **Spend**: `uv run compintel costs` (about $2.13 of the $12 cap after M8). The repo moved machines after M7:
   `runs/costs.jsonl` starts with one `carried-forward` row of $1.34 for the earlier spend.
 - **Working agreement with the developer**:
   - Start each milestone with the API verification pass (installed source + docs), then implement, test, run
@@ -44,5 +44,5 @@
   - A checkpointing crew can't be kicked off twice: the second kickoff resumes and skips every task
     (`crewai test`/`train` run with `checkpoint = False`, decisions #125). Training keeps one feedback per agent
     per iteration (#126).
-- **Tests**: 247 passing (`uv run pytest`, about 85 s; the spec's target is 60 s). `uv run ruff check .`,
+- **Tests**: 250 passing (`uv run pytest`, about 82 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.

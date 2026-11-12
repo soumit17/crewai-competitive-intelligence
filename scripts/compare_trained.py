@@ -28,6 +28,7 @@ def main(trained_file: str) -> None:
     from compintel.config import LONG_OUTPUT_MAX_TOKENS, PROJECT_ROOT, make_llm
     from compintel.cost import get_ledger
     from compintel.crews import short_update
+    from compintel.tools.render_brief import render_markdown
     from evals import faithfulness, quality
     from evals.data import WeekRun, load_weeks
 
@@ -38,6 +39,8 @@ def main(trained_file: str) -> None:
     weeks = load_weeks((1, 2, WEEK))
     known = {i: s for w in weeks for i, s in w.signals.items()}
     reports = weeks[-1].reports
+    # The faithfulness judge's v2 source (evals.faithfulness.PROMPT_VERSION): last week's brief.
+    previous = render_markdown(weeks[-2].brief) if len(weeks) > 1 else ""
     judge = make_llm(max_tokens=LONG_OUTPUT_MAX_TOKENS)
     context = faithfulness.our_facts()
 
@@ -47,7 +50,7 @@ def main(trained_file: str) -> None:
         result = short_update.run(WEEK, reports, trained_agents_file=file)
         crewai_event_bus.flush()
         run = WeekRun(WEEK, label, reports, result.brief, "routine")
-        faith = faithfulness.judge_week(run, known, judge, samples=3, context=context)
+        faith = faithfulness.judge_week(run, known, judge, samples=3, context=context, previous=previous)
         qual = quality.judge_week(run, judge, samples=3)
         ids = faithfulness.week_ids(run, known)
         rows[label] = {

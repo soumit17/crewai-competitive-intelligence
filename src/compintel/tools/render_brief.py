@@ -7,6 +7,7 @@ code from the approved Brief (saved by the write task's callback), not prose gen
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from crewai.tools import BaseTool
@@ -21,6 +22,12 @@ def draft_path(week: int, suffix: str = ".json") -> Path:
     return DRAFTS_DIR / f"week-{week:02d}{suffix}"
 
 
+def headline(brief: Brief) -> str:
+    """The headline without a leading "Week 2:" of its own: the title adds the week, and live briefs rendered
+    "# Week 02: Week 2: ..." (M8d what-if)."""
+    return re.sub(rf"^\s*week\s*0*{brief.week}\s*[:\-–—]\s*", "", brief.headline, flags=re.IGNORECASE)
+
+
 def render_markdown(brief: Brief) -> str:
     def bullets(items: list[str]) -> str:
         return "\n".join(f"- {i}" for i in items) if items else "- None."
@@ -33,7 +40,7 @@ def render_markdown(brief: Brief) -> str:
         f"| {r.action} | {r.owner} | {r.urgency.replace('_', ' ')} | {', '.join(r.signal_ids)} |"
         for r in brief.recommendations
     )
-    return f"""# Week {brief.week:02d}: {brief.headline}
+    return f"""# Week {brief.week:02d}: {headline(brief)}
 
 *Route: {brief.route}*
 

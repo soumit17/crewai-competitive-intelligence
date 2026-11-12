@@ -87,6 +87,8 @@ venv = ".venv"
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+# The spec is the course's document, not ours to reformat (ruff formats code blocks in markdown).
+extend-exclude = ["p3-crewai-competitive-intelligence.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

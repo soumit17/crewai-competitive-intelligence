@@ -22,7 +22,7 @@ def run(
     """Score the three published weeks; write evals/report.md and runs/evals/<time>.json."""
     from compintel.config import LONG_OUTPUT_MAX_TOKENS, get_settings, make_llm, model_id
     from compintel.cost import get_ledger
-    from evals import scoring
+    from evals import faithfulness, scoring
     from evals.data import load_weeks
 
     try:
@@ -34,7 +34,10 @@ def run(
     faith = make_llm(max_tokens=LONG_OUTPUT_MAX_TOKENS) if judge else None
     qual = make_llm(final=final, max_tokens=LONG_OUTPUT_MAX_TOKENS) if judge else None
     # The sample count is part of the judge: an average of 3 isn't comparable with a single sample.
-    judges = {"faithfulness": f"{model_id()} x{samples}", "quality": f"{model_id(final)} x{samples}"}
+    judges = {
+        "faithfulness": f"{model_id()} x{samples}, prompt v{faithfulness.PROMPT_VERSION}",
+        "quality": f"{model_id(final)} x{samples}",
+    }
     judges = judges if judge else {}
 
     from crewai.events.event_bus import crewai_event_bus

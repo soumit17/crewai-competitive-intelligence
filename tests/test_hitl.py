@@ -199,3 +199,22 @@ def test_render_gate_hook_lets_an_approved_render_through(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *_: "")
     result = short_update.run(3, REPORTS, fake=ScriptedLLM(Rule(Script([brief()]))))
     assert result.markdown.startswith("# Week 03:")
+
+
+def test_crewai_run_inputs_pauses_for_async_review_when_p3_review_is_async(world, stubs, monkeypatch):  # noqa: F811
+    """The M9 fresh-clone check runs `crewai run --inputs '{"week":1}'`, which has no --review flag:
+    P3_REVIEW=async makes the flow pause for `compintel review` instead of prompting in the terminal."""
+    from crewai.flow.flow_config import flow_config
+    from crewai_cli import kickoff_flow
+
+    from compintel.config import get_settings
+
+    review_with(monkeypatch)
+    flow_config.hitl_provider = None  # as in a fresh `crewai run` process
+    monkeypatch.setenv("P3_REVIEW", "async")
+    get_settings.cache_clear()
+    monkeypatch.setattr(kickoff_flow, "_project_script_target", lambda name: "compintel.flow:kickoff")
+    kickoff_flow._kickoff_flow_with_inputs({"week": 1})  # what `crewai run --inputs` calls
+    [pending] = review.list_pending()
+    assert pending["markdown"].startswith("# Week 01:") and not Path("briefs/week-01.md").exists()
+    assert isinstance(flow_config.hitl_provider, review.PendingReview)
