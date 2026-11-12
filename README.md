@@ -31,7 +31,7 @@ source says ("no measured adoption yet", "the first GST e-invoicing hire in this
 | Material week (2) | $0.023 | $0.039 (deep dive, sequential) | $0.011 | **$0.074** | ~6.5 min |
 
 Memory is a third of a routine week's cost: publishing saves each fact with an LLM analysis (scope,
-importance). The whole project, including every experiment and eval, cost $2.13 of the $12 cap.
+importance). The whole project, including every experiment and eval, cost $2.19 of the $12 cap.
 
 **Process comparison** (M4, week 2): sequential, `manager_llm` and `manager_agent` produced the same brief
 quality for $0.033-0.042; the managers delegated only the two tool-backed analyses, and sequential was
@@ -47,7 +47,7 @@ fastest (its analyses run in parallel). For a fixed pipeline, the explicit proce
 | Revise loop works; `learn=True` changes the next draft | Met: one week-1 note became two lessons; week 2's headline reached review at 15 words instead of 19 (M6) |
 | Kill mid-deep-dive, resume skips finished tasks | Partly: the DeepDiveCrew can't checkpoint in crewai 1.15.33 (decisions #59). The ShortUpdateCrew resumes from its checkpoint, and `run --resume` skips a week's finished paid steps |
 | `pytest` < 60 s, no network, no model calls, no OpenAI key | 252 tests, no network or model calls, no OpenAI key; **~82 s** on a 2-core machine (decisions, M9) |
-| Week-2 material recall 100%, every claim cites, spend ≤ $12 | Met: 100%, 100%, $2.13 |
+| Week-2 material recall 100%, every claim cites, spend ≤ $12 | Met: 100%, 100%, $2.19 |
 
 **The flow**, as `crewai flow plot` draws it ([docs/flow_plot.html](docs/flow_plot.html), interactive):
 
@@ -632,6 +632,8 @@ The first live run of it found a bug: two week-1 scouts ended with an answer tha
 converter turned each into a made-up "StockSathi, week 0" report, and the week was published without
 BahiBook. Each scout now has a guardrail (crewai's agent `guardrail`): a report for another company or week is
 rejected and the scout re-run, and if it keeps failing the run stops (decisions #132).
+Run again after the fix, the fresh clone published a full week 1 (scout reports 8, 4, 4 signals; routine;
+$0.014).
 
 `crewai run` has no `--review` flag: `P3_REVIEW` (`.env`) picks the reviewer for it, `console` (default) or
 `async`. Also in M9: the faithfulness judge reads last week's published brief (prompt v2; it had flagged true

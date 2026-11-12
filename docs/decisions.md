@@ -832,6 +832,10 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   empty store answers "No relevant memories found." The first attempt also hit a full disk (`uv sync`: no
   space for lancedb); Playwright's Chromium and uv's unused cache were removed. The clone's own fake web
   server didn't start (port 8765 held by one left running from the main repo; same files, so no effect).
+- **Fresh clone, live, after #132** (developer, 2026-11-12): passed. Scout reports StockSathi 8, ShelfMitra 4,
+  BahiBook 4 (main repo 8, 7, 4), materiality 2.37 (2.32), routine route, async review approved, published
+  `briefs/week-01.md`; no guardrail rejection in the log. $0.0136 by the clone's ledger; both clone runs are
+  in the main ledger as one carried-forward row ($0.034, the first run's ~$0.02 estimated). Spend now $2.19.
 - **v2 judge baseline** (developer, 2026-11-12): faithfulness 96.2 (v1: 96.5), quality 50.0 (48.6), the rest
   unchanged. The previous-brief claims are no longer flagged; the four claims still flagged each add something
   no source says (week 1 "lowest entry price", week 2 "no measured adoption yet", week 3 an unchanged

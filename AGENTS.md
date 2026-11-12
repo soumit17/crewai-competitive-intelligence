@@ -18,7 +18,7 @@
   Live reviews: use `--review async` (or `P3_REVIEW=async` for `crewai run`) + `compintel review <id> "approve"`; the console prompt received only empty
   answers on the developer's terminal (decisions #106, unexplained; not reproducible here).
   M8 was split into stages at the developer's request: each ends with commands for the developer to run.
-- **Spend**: `uv run compintel costs` (about $2.13 of the $12 cap after M8). The repo moved machines after M7:
+- **Spend**: `uv run compintel costs` (about $2.19 of the $12 cap after M9). The repo moved machines after M7:
   `runs/costs.jsonl` starts with one `carried-forward` row of $1.34 for the earlier spend.
 - **Working agreement with the developer**:
   - Start each milestone with the API verification pass (installed source + docs), then implement, test, run
