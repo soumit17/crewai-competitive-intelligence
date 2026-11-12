@@ -764,6 +764,21 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   (`briefs/week-02.md`): the faithfulness judge doesn't see the previous brief the writer reads. For M9.
 - **Rendering nit**: the original what-if headline renders "Week 02: Week 2: ..." when the writer's headline
   starts with the week. For M9.
+- **`crewai test` after the fix** (2 runs, Haiku evaluator, `runs/crewai_test.log`): classify_signals 7.0 / 6.5,
+  write_short_brief 7.5 / 6.5, render_draft 7.0 / 7.0; crew 7.17 / 6.67, average 6.9. The evaluator scores
+  completion and quality only, with no ground truth, so it doesn't catch the faithfulness or threat-level
+  errors the M8c evals measure.
+- **crewai bug, harmless here**: crewai's own `EventListener.on_crew_test_result` reads `source.crew` on a
+  Crew source and logs "'Crew' object has no attribute 'crew'" per task; it only feeds crewai's telemetry span.
+- **Training after the fixes** (`docs/training.md`, 2 iterations, feedback 6 times): both roles' suggestions
+  restate their feedback (the writer's: no "lowest" without checking every competitor, Kolkata first, each
+  point once). One trained run vs one untrained on week 3: faithfulness 94.1 vs 100, quality 3.0 vs 3.0
+  (prioritized +0.33, actionable -0.33), 548 vs 642 words, threat levels 1/3 vs 3/3 (the trained analyst
+  rated StockSathi high on the unchanged price gap and BahiBook low; ground truth medium, medium). The
+  trained writer also dropped the rumor's credibility score from Discounted claims (its suggestion "remove
+  credibility scores unless the signals provide them" misfired: they do). Verdict: no measurable gain from
+  2 iterations of feedback; the briefs vary more between runs than training moves them. Training stays
+  opt-in (`trained_agents_file`), not used by the flow.
 - **Test suite: 247 tests, ~85 s.**
 
 ## Open questions for the developer

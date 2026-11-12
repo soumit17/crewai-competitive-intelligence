@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8d (`crewai test` / `crewai train` with Anthropic, checkpoint what-if) built; its live runs are the developer's next step. M9 (polish) after.
+**Status:** M0–M8 done (M8d: `crewai test` / `crewai train` with Anthropic, checkpoint what-if). Next: M9 (polish, results, fresh-clone check).
 
 ## Setup
 
@@ -557,6 +557,17 @@ What to know:
   allows only if it works without an account.
 - **The what-if runs on the ShortUpdateCrew**, not the deep dive's `pricing_analysis` (spec): the DeepDiveCrew
   can't checkpoint in crewai 1.15.33 (decisions #59).
+- **Test/train run with checkpointing off**: with it on, crewai's second kickoff of the same crew resumes the
+  first run and skips every task (`-n 2` ran once). And training keeps one feedback per agent per run, so only
+  the writer's `write_short_brief` gets feedback (decisions #125, #126).
+
+Results (live, Haiku 5.5, week 3; details in decisions.md "M8d findings"):
+- **`crewai test`**: task scores 6.8 (analyst), 7.0, 7.0 (writer); crew 6.9 average over 2 runs.
+- **What-if** ([docs/what-if.md](docs/what-if.md)): told the cut was 50% to ₹499, the writer still wrote the
+  signals' 30% to ₹699. When the analysis and the evidence disagree, the brief follows the evidence.
+- **Training** ([docs/training.md](docs/training.md)): the suggestions match the feedback, but the one trained
+  brief was no better: faithfulness 94.1 vs 100, quality 3.0 vs 3.0, threat levels 1/3 vs 3/3. One run each,
+  so it's a hint; training stays opt-in and isn't used by the weekly flow.
 
 ## Later milestones' commands
 

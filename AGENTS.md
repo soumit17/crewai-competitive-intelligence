@@ -12,7 +12,7 @@
 
 ## Where things stand (handoff)
 
-- **Done: M0–M8** (M8d's live runs are the developer's; baseline in `evals/baseline.json`, `python -m evals run --gate` before merging changes to prompts or crews), one commit each (`git log`). The README's status line and its per-milestone sections say what
+- **Done: M0–M8** (baseline in `evals/baseline.json`, `python -m evals run --gate` before merging changes to prompts or crews), one commit each (`git log`). The README's status line and its per-milestone sections say what
   each milestone added and how to run it; `docs/decisions.md` has every decision and live finding, numbered.
 - **Next: M9** (polish, README results, fresh-clone check; the journal is the developer's).
   Live reviews: use `--review async` + `compintel review <id> "approve"`; the console prompt received only empty
