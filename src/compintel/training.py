@@ -17,7 +17,9 @@ crewai's CLI doesn't run a crew itself: `crewai test -n N -m MODEL` runs `uv run
 Two choices:
 - Feedback comes from `evals/training_feedback.json` (task name -> feedback, reviewed before training),
   through crewai's own provider hook (`crewai.core.providers.human_input.set_provider`), not a console
-  prompt: same training path, no typing.
+  prompt: same training path, no typing. crewai keeps one feedback record per agent per iteration, so of
+  an agent's tasks only one may get feedback (the writer's write_short_brief; render_draft gets none).
+- Checkpointing is off for both: see `_crew`.
 - The file must not be crewai's default `trained_agents_data.pkl`: with no file named, *every* agent run reads
   that one from the working directory, by role, so the deep dive's Brief Writer and Market Analyst would
   silently follow the ShortUpdateCrew's training. Train into runs/training/ and load it only on purpose
@@ -56,9 +58,11 @@ class FileFeedback(SyncHumanInputProvider):
         text = self.feedback.get(name, "")
         self.used.append((name, text))
         print(f"\n[training feedback for {name or 'unnamed task'}] {text or '(none)'}\n", flush=True)
-        if context._is_training_mode():
+        if text and context._is_training_mode():
             return self._handle_training_feedback(formatted_answer, text, context)
-        return formatted_answer  # outside training: no feedback rounds
+        # No feedback, no round: crewai keeps one training record per agent per iteration, so a round here
+        # would overwrite the record of this agent's earlier task (the writer's write_short_brief).
+        return formatted_answer
 
 
 def load_feedback(path: Path = FEEDBACK_FILE) -> dict[str, str]:
@@ -82,11 +86,18 @@ def week_inputs(week: int | None = None) -> tuple[int, dict]:
 
 
 def _crew(fake: Any = None) -> Any:
+    """The ShortUpdateCrew with checkpointing off.
+
+    `Crew.test` / `Crew.train` kick off one crew object n times. A checkpoint write copies the run's kickoff
+    id onto the live crew (`crewai.state.runtime._sync_checkpoint_fields`), so the second kickoff takes itself
+    for a checkpoint resume and skips every finished task: n=2 ran the crew once (decisions #125)."""
     from compintel import hooks
     from compintel.crews import short_update
 
     hooks.install()
-    return short_update.load(fake=fake)
+    crew = short_update.load(fake=fake)
+    crew.checkpoint = False  # crewai: False opts out, None inherits
+    return crew
 
 
 def run_test(n_iterations: int, model: str, fake: Any = None, eval_llm: Any = None) -> None:

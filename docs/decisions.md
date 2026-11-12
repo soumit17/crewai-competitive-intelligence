@@ -735,6 +735,16 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
      (#59). `short_update.fork(snapshot, {task: new_output})` = `Crew.fork` (a new branch) + crewai's own
      `_apply_task_overrides` (the TUI's Fork), + rebuilding the edited task's `.pydantic`, which the TUI leaves
      stale. `resume` and `fork` share the re-attach code (`_restore`).
+125. **`crewai test` / `crewai train` run with checkpointing off** (`crew.checkpoint = False`). Live, `-n 2` ran
+     the crew once (ledger: one analyst call per command). Cause, in crewai 1.15.33: `Crew.test` / `Crew.train`
+     kick off *one* crew object n times; each checkpoint write copies the run's kickoff id onto the live crew
+     (`state.runtime._sync_checkpoint_fields`), so the second kickoff passes `_get_execution_start_index` as a
+     checkpoint resume and skips every task that has an output, i.e. all of them. (`Crew.copy()` clears those
+     fields on purpose; the test/train loop reuses its copy.) Neither command needs snapshots. Upstream-worthy.
+126. **Only one task per agent gets training feedback**: crewai keys training records by agent id and
+     iteration (`agent_executor._handle_crew_training_output`), so the writer's `render_draft` feedback
+     replaced its `write_short_brief` feedback; the first live training taught the writer only "render the brief
+     verbatim". `render_draft` (a tool call) now gets no feedback round (`FileFeedback`: empty text = no round).
 
 ## M8d findings
 
@@ -742,7 +752,19 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   harmless for scoring.
 - **Both `crewai test` and `crewai train` write a `project_id` into pyproject.toml** before running
   (`get_or_create_project_id`); no network.
-- **Test suite: 245 tests, ~90 s.**
+- **What-if (`docs/what-if.md`): the brief followed the evidence, not the edited analysis.** With StockSathi's
+  analysis rewritten to "50%, to ₹499, below our ₹649 floor", the writer wrote 30% / ₹699 again (0 mentions of
+  50%; its one ₹499 is StockSathi's real Basic price), kept the threat high and reworded the rationale from the
+  signals. The writer reads both the analysis and the signals and trusts the signals when they disagree:
+  good for faithfulness; it also means an analyst error the signals contradict is corrected silently.
+- **The first live training run** (before #125/#126) trained one iteration and taught the writer only "render
+  verbatim"; the trained brief scored faithfulness 92.1 vs 95.8 and rated StockSathi low (ground truth medium)
+  after the analyst's "unchanged price is not high impact" suggestion. Not kept; re-run after the fixes.
+- **Judge gap**: both week-3 briefs' "week 2 rated StockSathi high" was flagged unsupported, but it is true
+  (`briefs/week-02.md`): the faithfulness judge doesn't see the previous brief the writer reads. For M9.
+- **Rendering nit**: the original what-if headline renders "Week 02: Week 2: ..." when the writer's headline
+  starts with the week. For M9.
+- **Test suite: 247 tests, ~85 s.**
 
 ## Open questions for the developer
 

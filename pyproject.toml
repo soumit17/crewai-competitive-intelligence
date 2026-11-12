@@ -64,6 +64,7 @@ default-groups = ["dev", "mcp-adapter", "tracing"]
 # Tells the crewai CLI this project is a Flow (so `crewai run` calls the `kickoff` script).
 [tool.crewai]
 type = "flow"
+project_id = "ae464fd4-5d6d-42c9-a1e5-022fad6c854e"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

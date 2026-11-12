@@ -1,6 +1,7 @@
 {
   "_how": "crewai train feeds each task's text below to its agent after the task (compintel.training.FileFeedback); the agent redoes the task with it, then turns all feedback into suggestions. Drawn from the M8c eval report. Edit before training if you disagree.",
+  "_one_per_agent": "crewai keeps one feedback record per agent per training iteration: feedback on render_draft (also the Brief Writer) would replace write_short_brief's. Empty text means no feedback round.",
   "classify_signals": "Rate a signal high only when it changes something this week: an unchanged price or a re-listed job ad is not high impact, even if the company is a big threat. Each threat level rests on the signals of this week and names their ids.",
   "write_short_brief": "Never call a price or plan the lowest, cheapest, first or only one unless you checked every competitor's signals for it. Add nothing the signals don't state (adoption, impact ratings, 'new this week' without a comparison). Lead with the threat to our Kolkata market. Say each point once: the TL;DR, threats and recommendations must not repeat each other.",
-  "render_draft": "Render exactly the brief that passed review; change nothing in it."
+  "render_draft": ""
 }

@@ -41,5 +41,8 @@
     TracerProvider needs `replace_default_processor=False`, or nothing is exported.
   - `crewai_event_bus.scoped_handlers()` hides *every* handler (the cost listener too) while it lasts: tests only.
   - Never train into `trained_agents_data.pkl` (every agent run reads it by default, by role).
-- **Tests**: 245 passing (`uv run pytest`, about 90 s; the spec's target is 60 s). `uv run ruff check .`,
+  - A checkpointing crew can't be kicked off twice: the second kickoff resumes and skips every task
+    (`crewai test`/`train` run with `checkpoint = False`, decisions #125). Training keeps one feedback per agent
+    per iteration (#126).
+- **Tests**: 247 passing (`uv run pytest`, about 85 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.

@@ -9,6 +9,7 @@ import re
 import pytest
 from crewai.events.event_bus import crewai_event_bus
 from crewai.events.types.crew_events import CrewTestResultEvent
+from crewai.events.types.task_events import TaskStartedEvent
 
 from compintel import training
 from compintel.crews import short_update
@@ -18,7 +19,7 @@ from tests.test_short_update_crew import REPORTS, Script, brief
 FEEDBACK = {
     "classify_signals": "An unchanged price is not high impact.",
     "write_short_brief": "Never call a price the lowest unless you checked every competitor.",
-    "render_draft": "Render it as it is.",
+    "render_draft": "",  # one feedback record per agent per iteration: see training_feedback.json
 }
 SUGGESTIONS = {"Market Analyst": "Rate repeats low.", "Brief Writer": "Check every competitor first."}
 
@@ -28,13 +29,15 @@ def week3(monkeypatch):
     monkeypatch.setattr(training, "week_inputs", lambda week=None: (3, REPORTS))
 
 
-def crew_llm(script: Script) -> ScriptedLLM:
+def crew_llm(script: Script, evaluations: list[str] | None = None) -> ScriptedLLM:
     """The crew's answers, plus the training evaluator's: each agent's own LLM turns the feedback it got into
-    suggestions."""
+    suggestions (its prompts go to `evaluations`)."""
 
     def answer(messages, response_model):
         if getattr(response_model, "__name__", "") == "TrainingTaskEvaluation":
             assert "human feedback" in json.dumps(messages).lower()
+            if evaluations is not None:
+                evaluations.append(json.dumps(messages, ensure_ascii=False))
             return {"suggestions": ["Follow the feedback."], "quality": 7.0, "final_summary": "ok"}
         return script(messages, response_model)
 
@@ -49,6 +52,24 @@ def test_crewai_test_scores_every_task_with_the_llm_we_give_it(week3):
     crewai_event_bus.flush()
     assert len(judge.calls) == 3  # one evaluation per task
     assert [q for q, _ in results] == [8.0, 8.0, 8.0]
+
+
+def classify_runs() -> list[str]:
+    starts: list[str] = []
+    crewai_event_bus.on(TaskStartedEvent)(
+        lambda _, e: starts.append(e.task_name) if e.task_name == "classify_signals" else None
+    )
+    return starts
+
+
+def test_crewai_test_runs_the_crew_n_times(week3):
+    """A checkpoint write marks the live crew as a resumable run; Crew.test's second kickoff then skipped
+    every task (n=2 ran once, live). Test/train run with checkpointing off."""
+    starts = classify_runs()
+    judge = ScriptedLLM(Rule(lambda m, rm: {"quality": 8.0}))
+    training.run_test(2, "anthropic/claude-haiku-5-5", fake=crew_llm(Script([brief()] * 2)), eval_llm=judge)
+    crewai_event_bus.flush()
+    assert len(starts) == 2 and len(judge.calls) == 6
 
 
 def test_the_model_string_from_the_cli_becomes_our_native_anthropic_llm():
@@ -67,6 +88,20 @@ def test_training_feeds_each_task_its_feedback_and_saves_suggestions_by_role(wee
     assert all(trained[r]["suggestions"] for r in trained)
     # The feedback reached the agent: its redo saw it.
     assert any("Never call a price the lowest" in p for p in script.writer_prompts)
+
+
+def test_training_runs_n_iterations_and_keeps_the_writers_brief_feedback(week3, tmp_path):
+    """crewai keeps one feedback record per agent per iteration: render_draft (the writer's second task) gets
+    no feedback round, or it would replace write_short_brief's (live: the writer learned only 'render
+    verbatim')."""
+    starts = classify_runs()
+    evaluations: list[str] = []
+    script = Script([brief()] * 6)  # per iteration: draft, redo with feedback, render
+    training.run_train(2, str(tmp_path / "t.pkl"), fake=crew_llm(script, evaluations), feedback=FEEDBACK)
+    crewai_event_bus.flush()
+    assert len(starts) == 2
+    writer = next(e for e in evaluations if "Never call a price the lowest" in e)
+    assert "Iteration: 0" in writer and "Iteration: 1" in writer
 
 
 def test_a_trained_file_is_used_only_when_named(hooks_on, tmp_path):
