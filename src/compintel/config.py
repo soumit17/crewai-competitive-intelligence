@@ -87,12 +87,13 @@ def stream_tokens(on: bool = True) -> None:
     _stream_tokens = on
 
 
-def make_llm(final: bool = False, max_tokens: int | None = None) -> LLM:
+def make_llm(final: bool = False, max_tokens: int | None = None, model: str | None = None) -> LLM:
     """The only way this project builds an LLM.
 
     `anthropic/` prefix → crewai's native AnthropicCompletion (no LiteLLM). No temperature: Claude 5.5 models
     reject non-default sampling values, and the provider only sends it when set. The native provider streams
     text, tool-call arguments and structured output alike, so `stream` is safe for every agent.
+    `model`: another model id (e.g. `crewai test -m anthropic/...`); default MODEL_DEV, or MODEL_FINAL.
     """
     from crewai import LLM
 
@@ -100,7 +101,7 @@ def make_llm(final: bool = False, max_tokens: int | None = None) -> LLM:
 
     register_native_structured_outputs()  # Haiku 5.5: schema-guaranteed structured output (see compat.py)
     s = get_settings()
-    return LLM(model=model_id(final), max_tokens=max_tokens or s.max_tokens, stream=_stream_tokens)
+    return LLM(model=model or model_id(final), max_tokens=max_tokens or s.max_tokens, stream=_stream_tokens)
 
 
 # Agents whose answer is a whole structured document (a SignalReport, a Brief) need more than MAX_TOKENS:

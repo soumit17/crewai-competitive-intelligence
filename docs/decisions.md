@@ -59,9 +59,9 @@ Still to verify in their milestone: async feedback provider interface + resume A
 | 4 | `memory/unified_memory.py` `_default_embedder()` | **OpenAI embeddings** | `Memory(embedder={local provider})` |
 | 5 | `rag/chromadb/config.py` — knowledge sources' default embedding fn | **OpenAI embeddings** (`OPENAI_API_KEY`) | `embedder=` on Crew / Agent / knowledge |
 | 6 | `flow/human_feedback.py` — `@human_feedback(emit=..., learn=True)` | falls back to `DEFAULT_LLM_MODEL` (docs examples use `gpt-5.4-mini`) | Always pass `llm=` |
-| 7 | `crewai_cli/cli.py` — `crewai test -m` | **`gpt-5.4-mini`** | Pass `-m anthropic/...`; `Crew.test(eval_llm: str \| BaseLLM)` now accepts any LLM, so the spec's "OpenAI-only" note looks outdated → confirm in M8 |
+| 7 | `crewai_cli/cli.py` — `crewai test -m` | **`gpt-5.4-mini`** | Pass `-m anthropic/...`: confirmed in M8d, `Crew.test` takes any LLM (decisions #119) |
 | — | Hierarchical process without `manager_llm`/`manager_agent` | uses #1 | Custom `manager_agent` with explicit `llm` (M4) |
-| — | `crewai train` evaluator | uses agent/crew LLM via `TaskEvaluator` → confirm in M8 | |
+| — | `crewai train` evaluator | the agent's own LLM via `TaskEvaluator` (confirmed in M8d, #122) | |
 
 Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` users. Re-run when upgrading.
 
@@ -710,6 +710,39 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   padded briefs (concise 2.3-3), week 2 not leading with the Kolkata threat.
 - **No human scores**: the developer chose not to score the briefs, so judge-vs-human agreement isn't measured.
 - **Test suite: 235 tests, ~85 s.**
+
+## M8d decisions (crewai test / train / eval, checkpoint what-if)
+
+118. **`test` / `train` project scripts** (`compintel.training`): `crewai test` and `crewai train` only run
+     `uv run test N MODEL` / `uv run train N FILE`. They run the ShortUpdateCrew (spec: train it) on a published
+     week's signals (`WEEK`, default 3), not the Flow: `Crew.test` / `Crew.train` are crew methods.
+119. **`crewai test -m anthropic/...` works**: the CLI help still says "only OpenAI models" and defaults to
+     gpt-5.4-mini, but `Crew.test(eval_llm: str | BaseLLM)` takes any LLM; ours is built by
+     `config.make_llm(model=...)` (native provider, our structured-output registration). Decisions table #7.
+120. **Training feedback from a file, through crewai's provider hook** (`set_provider`, a `SyncHumanInputProvider`
+     subclass keyed by task name): the same `_handle_training_feedback` path as a typed answer, without a console
+     prompt (the developer's terminal returned empty answers to our review prompt, and the developer asked not
+     to write feedback). The feedback (`evals/training_feedback.json`) is drawn from the M8c eval report.
+121. **`train` refuses `trained_agents_data.pkl`**: with no file named, `Agent._use_trained_data` reads that file
+     from the working directory on *every* run, by role, so a ShortUpdateCrew training would leak into the deep
+     dive's Brief Writer and Market Analyst. Trained files live in `runs/training/` and are loaded only by name
+     (`short_update.run(trained_agents_file=...)`).
+122. **The trainer is the agents' own LLM** (`TaskEvaluator(agent)` uses `agent.llm`): Haiku here, no OpenAI.
+123. **`crewai eval` not run**: it grades the last traced run on CrewAI AMP (it uploads the trace, turning
+     tracing on by itself without a terminal) and model comparison needs `crewai login`. The spec allows it only
+     without an account; running it would send our run data out.
+124. **The what-if is on the ShortUpdateCrew** (spec: the deep dive's `pricing_analysis`), which can't checkpoint
+     (#59). `short_update.fork(snapshot, {task: new_output})` = `Crew.fork` (a new branch) + crewai's own
+     `_apply_task_overrides` (the TUI's Fork), + rebuilding the edited task's `.pydantic`, which the TUI leaves
+     stale. `resume` and `fork` share the re-attach code (`_restore`).
+
+## M8d findings
+
+- **`crewai test` replaces every task's callback** with its evaluator, so `save_draft` doesn't run in test runs;
+  harmless for scoring.
+- **Both `crewai test` and `crewai train` write a `project_id` into pyproject.toml** before running
+  (`get_or_create_project_id`); no network.
+- **Test suite: 245 tests, ~90 s.**
 
 ## Open questions for the developer
 

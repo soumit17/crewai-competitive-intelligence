@@ -28,6 +28,9 @@ kickoff = "compintel.flow:kickoff"
 plot = "compintel.flow:plot"
 # `crewai replay -t <task_id>` runs `uv run replay <task_id>`.
 replay = "compintel.replay:main"
+# `crewai test -n N -m MODEL` / `crewai train -n N -f FILE` run these (M8d; compintel.training).
+test = "compintel.training:test"
+train = "compintel.training:train"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]

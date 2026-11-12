@@ -100,20 +100,19 @@ def latest_checkpoint() -> str | None:
     return f"{db}#{row[0]}" if row else None
 
 
-def resume(location: str | None = None, final: bool = False, fake=None) -> ShortUpdateResult:
-    """Continue a killed run from its last checkpoint: finished tasks are skipped, not re-run.
+def _restore(location: str, fork: bool, final: bool = False, fake=None) -> Crew:
+    """A crew rebuilt from a snapshot (resumed, or forked onto a new branch), with what a restore drops put
+    back.
 
     A restore rebuilds the crew from the snapshot, which does not bring back (crewai docs): callable
     guardrails, and our LLM objects and memory views as configured here; callbacks only with
     CREWAI_DESERIALIZE_CALLBACKS=1. They are re-attached from a freshly loaded crew. The signal registry is
     rebuilt from the saved inputs.
     """
-    location = location or latest_checkpoint()
-    if location is None:
-        raise ValueError("no ShortUpdateCrew checkpoint to resume from")
     # Our own snapshot file, so its callback references (save_draft, register_signals) are trusted.
     os.environ["CREWAI_DESERIALIZE_CALLBACKS"] = "1"
-    crew = Crew.from_checkpoint(CheckpointConfig(restore_from=location))
+    config = CheckpointConfig(restore_from=location)
+    crew = Crew.fork(config) if fork else Crew.from_checkpoint(config)
     fresh = load(final=final, fake=fake)
     fresh_agents = {a.role: a for a in fresh.agents}
     for agent in crew.agents:
@@ -125,11 +124,64 @@ def resume(location: str | None = None, final: bool = False, fake=None) -> Short
         task.guardrails = fresh_tasks[task.name].guardrails  # type: ignore[assignment]
         # Rebuild crewai's guardrail list (and the string guardrail's LLM binding); a model validator method.
         task.ensure_guardrails_is_list_of_callables()  # type: ignore[operator]
-    inputs = crew.checkpoint_inputs or {}
-    register_signals(inputs)
+    register_signals(crew.checkpoint_inputs or {})
+    return crew
+
+
+def resume(location: str | None = None, final: bool = False, fake=None) -> ShortUpdateResult:
+    """Continue a killed run from its last checkpoint: finished tasks are skipped, not re-run."""
+    location = location or latest_checkpoint()
+    if location is None:
+        raise ValueError("no ShortUpdateCrew checkpoint to resume from")
+    crew = _restore(location, fork=False, final=final, fake=fake)
     output = crew.kickoff()
     assert isinstance(output, CrewOutput)
     return _result(crew, output)
+
+
+def fork(location: str, overrides: dict[str, str], final: bool = False, fake=None) -> ShortUpdateResult:
+    """What-if (spec §13): fork a snapshot, replace finished tasks' outputs, re-run what comes after them.
+
+    `overrides`: task name -> new raw output. The same edit as the `crewai checkpoint` TUI's Fork: crewai's
+    own `_apply_task_overrides` (sets the output, rewrites that agent's answer in its message history, clears
+    every later task's output so it re-runs). The TUI sets only `.raw`; a typed output's `.pydantic` is
+    rebuilt here from the new raw, so downstream readers of either see the same edit.
+    """
+    from crewai_cli.checkpoint_tui import _apply_task_overrides
+
+    crew = _restore(location, fork=True, final=final, fake=fake)
+    index = {t.name or f"task_{i + 1}": i for i, t in enumerate(crew.tasks)}
+    unknown = sorted(set(overrides) - set(index))
+    if unknown:
+        raise ValueError(f"no task named {unknown} in this crew ({', '.join(index)})")
+    unfinished = [name for name in overrides if crew.tasks[index[name]].output is None]
+    if unfinished:
+        raise ValueError(f"{unfinished} hadn't finished in this snapshot: nothing to override")
+    _apply_task_overrides(crew, {index[name]: raw for name, raw in overrides.items()})
+    for name, raw in overrides.items():
+        task = crew.tasks[index[name]]
+        if task.output is not None and task.output_pydantic is not None:
+            task.output.pydantic = task.output_pydantic.model_validate_json(raw)
+    output = crew.kickoff()
+    assert isinstance(output, CrewOutput)
+    return _result(crew, output)
+
+
+def snapshots_since(rowid: int) -> list[tuple[int, str]]:
+    """(rowid, `db#id`) of the snapshots written after `rowid`, oldest first: one per finished task."""
+    db = checkpoint_db()
+    if not db.exists() or db.stat().st_size == 0:
+        return []
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute(
+            "SELECT rowid, id FROM checkpoints WHERE rowid > ? ORDER BY rowid", (rowid,)
+        ).fetchall()
+    return [(r, f"{db}#{i}") for r, i in rows]
+
+
+def last_rowid() -> int:
+    snaps = snapshots_since(-1)
+    return snaps[-1][0] if snaps else 0
 
 
 def _result(crew: Crew, output: CrewOutput) -> ShortUpdateResult:
@@ -143,18 +195,29 @@ def _result(crew: Crew, output: CrewOutput) -> ShortUpdateResult:
     )
 
 
-def run(week: int, reports: dict[str, SignalReport], final: bool = False, fake=None) -> ShortUpdateResult:
+def inputs_for(week: int, reports: dict[str, SignalReport]) -> dict:
     previous = Path("briefs") / f"week-{week - 1:02d}.md"
+    return {
+        "week": week,
+        "week_nn": f"{week:02d}",
+        "signals": signals_input(reports),
+        "previous_brief": str(previous) if previous.exists() else "none",
+        "brief_schema": BRIEF_SCHEMA,
+    }
+
+
+def run(
+    week: int,
+    reports: dict[str, SignalReport],
+    final: bool = False,
+    fake=None,
+    trained_agents_file: str | None = None,
+) -> ShortUpdateResult:
+    """`trained_agents_file`: a `crewai train` result (M8d) whose suggestions the agents follow."""
     crew = load(final=final, fake=fake)
-    output = crew.kickoff(
-        inputs={
-            "week": week,
-            "week_nn": f"{week:02d}",
-            "signals": signals_input(reports),
-            "previous_brief": str(previous) if previous.exists() else "none",
-            "brief_schema": BRIEF_SCHEMA,
-        }
-    )
+    if trained_agents_file is not None:
+        crew.trained_agents_file = trained_agents_file
+    output = crew.kickoff(inputs=inputs_for(week, reports))
     # CrewStreamingOutput only comes back with stream=True, which this crew doesn't set.
     assert isinstance(output, CrewOutput)
     return _result(crew, output)

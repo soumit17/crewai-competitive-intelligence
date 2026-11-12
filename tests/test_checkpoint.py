@@ -65,6 +65,53 @@ def test_resume_skips_finished_tasks(hooks_on, monkeypatch):
     assert result.markdown.startswith("# Week 03:")
 
 
+def edited_classification() -> str:
+    """The what-if: StockSathi's analysis says the cut was 50% and the threat is high."""
+    from compintel.models import ThreatAssessment, ThreatAssessments
+
+    return ThreatAssessments(
+        threats=[
+            ThreatAssessment(company="StockSathi", threat="high", signal_ids=["StockSathi-3-1"],
+                             rationale="WHAT-IF: Pro cut 50% to ₹499, below our ₹649 floor [StockSathi-3-1]"),
+            ThreatAssessment(company="ShelfMitra", threat="medium", signal_ids=[], rationale="x"),
+            ThreatAssessment(company="BahiBook", threat="low", signal_ids=[], rationale="x"),
+        ]
+    ).model_dump_json()  # fmt: skip
+
+
+def test_fork_with_an_edited_task_output_reruns_only_what_follows(hooks_on):
+    """Spec §13's what-if, as the `crewai checkpoint` TUI's Fork does it: edit a finished task's output on a
+    fork, and only the tasks after it run again, reading the edit."""
+    short_update.run(3, REPORTS, fake=ScriptedLLM(Rule(Script([brief()]))))
+    crewai_event_bus.flush()
+    snaps = short_update.snapshots_since(0)
+    assert len(snaps) == 3  # one per task
+    after_classify = snaps[0][1]
+
+    script = Script([brief(headline="StockSathi's 50% cut")])
+    second = ScriptedLLM(Rule(script))
+    result = short_update.fork(after_classify, {"classify_signals": edited_classification()}, fake=second)
+
+    roles = [c["role"] for c in second.calls]
+    assert "Market Analyst" not in roles and roles.count("Brief Writer") == 2  # write + render, not classify
+    assert "WHAT-IF: Pro cut 50%" in script.writer_prompts[0]  # the writer read the edited analysis
+    assert result.threats.threats[0].threat == "high"  # .pydantic carries the edit, not only .raw
+    assert result.brief.headline == "StockSathi's 50% cut"
+    assert len(short_update.snapshots_since(snaps[-1][0])) == 2  # the fork's own snapshots: write, render
+
+
+def test_a_fork_refuses_unknown_or_unfinished_tasks(hooks_on):
+    llm = ScriptedLLM(Rule(killed_at_render(Script([brief()]))))
+    with pytest.raises(Exception, match="killed before rendering"):
+        short_update.run(3, REPORTS, fake=llm)
+    crewai_event_bus.flush()
+    first = short_update.snapshots_since(0)[0][1]  # after classify: write and render hadn't finished
+    with pytest.raises(ValueError, match="no task named"):
+        short_update.fork(first, {"pricing_analysis": "x"}, fake=ScriptedLLM())
+    with pytest.raises(ValueError, match="hadn't finished"):
+        short_update.fork(first, {"write_short_brief": "x"}, fake=ScriptedLLM())
+
+
 def test_nothing_to_resume_is_an_error(hooks_on):
     with pytest.raises(ValueError, match="no ShortUpdateCrew checkpoint"):
         short_update.resume(fake=ScriptedLLM())
@@ -158,3 +205,39 @@ def test_crew_checkpoints_survive_scouts_and_memory_in_the_same_flow(world):
     Week().kickoff()
     crewai_event_bus.flush()
     assert outcomes == ["ok", "ok", "ok"]
+
+
+def test_the_what_if_script_writes_its_comparison(hooks_on, tmp_path, monkeypatch):
+    """scripts/what_if.py end to end on the scripted crew: the doc is written, the fork read the edit."""
+    import importlib.util
+
+    from compintel import config
+    from evals import data
+
+    path = Path(__file__).parents[1] / "scripts" / "what_if.py"
+    spec = importlib.util.spec_from_file_location("what_if", path)
+    assert spec and spec.loader
+    what_if = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(what_if)
+
+    (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(what_if, "WEEK", 3)  # the fixtures are week 3's
+    monkeypatch.setattr(
+        data,
+        "load_weeks",
+        lambda weeks: [data.WeekRun(3, "s", REPORTS, Brief.model_validate(brief()), "routine")],
+    )
+    real_run, real_fork = short_update.run, short_update.fork
+    script = Script([brief(), brief(headline="StockSathi's 50% cut")])
+    monkeypatch.setattr(
+        short_update, "run", lambda week, reports: real_run(week, reports, fake=ScriptedLLM(Rule(script)))
+    )
+    monkeypatch.setattr(
+        short_update, "fork", lambda loc, ov: real_fork(loc, ov, fake=ScriptedLLM(Rule(script)))
+    )
+    what_if.main()
+    doc = (tmp_path / "docs" / "what-if.md").read_text()
+    assert "## Did the brief follow the analysis or the evidence?" in doc and "```diff" in doc
+    assert "StockSathi's 50% cut" in doc  # the forked brief's headline
+    assert "WHAT-IF: StockSathi cut Pro by 50%" in script.writer_prompts[-1]

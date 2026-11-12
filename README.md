@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8c (eval harness `evals/`, baseline and regression gate) done: M8 acceptance met (faithfulness 96.5%, week-2 material recall 100%, rumor never claimed). M8d (`crewai test/train`, checkpoint what-if) next.
+**Status:** M8d (`crewai test` / `crewai train` with Anthropic, checkpoint what-if) built; its live runs are the developer's next step. M9 (polish) after.
 
 ## Setup
 
@@ -534,9 +534,33 @@ A judged metric is gated only against a baseline judged by the same model and sa
 moved faithfulness by 9 points between identical runs, more than the 3-point gate. `evals/report.md` has the latest
 run, week by week, with every claim the judge didn't fully accept, and the M4 process comparison table.
 
+## M8d: crewai's own test, train and checkpoint tools
+
+| Command | Cost | What it does |
+|---|---|---|
+| `uv run python scripts/what_if.py` | ~$0.01 | Checkpoint what-if: fork the ShortUpdateCrew after `classify_signals` with StockSathi's analysis edited to "a 50% cut", re-run the writer, diff the briefs → `docs/what-if.md` |
+| `uv run crewai test -n 2 -m anthropic/claude-haiku-5-5` | ~$0.02 | crewai's built-in test: the crew twice, each task scored 1-10 by an evaluator agent on the `-m` model |
+| `uv run crewai train -n 2 -f runs/training/short_update.pkl` | ~$0.04 | crewai's training: feedback after every task (from `evals/training_feedback.json`), turned into suggestions per agent role |
+| `uv run python scripts/compare_trained.py runs/training/short_update.pkl` | ~$0.03 | The crew without and with the trained file, both judged → `docs/training.md` |
+| `uv run crewai checkpoint --location runs/checkpoints/short_update.db` | $0 | Browse the snapshots in crewai's TUI (q quits); Fork there does what `what_if.py` does |
+
+What to know:
+- **`crewai test` / `crewai train` run this project's `test` / `train` scripts** (`compintel.training`), which call
+  `Crew.test` / `Crew.train` on the ShortUpdateCrew with week 3's published signals. The CLI says `test`
+  takes "only OpenAI models"; `Crew.test` takes any LLM, and `-m anthropic/...` is built by our config.
+- **Training feedback isn't typed**: crewai's human-input provider hook (`set_provider`) reads it from a
+  reviewed file, by task. Same training path as typing it.
+- **Never train into `trained_agents_data.pkl`**: every agent run reads that file by default, by role, so the
+  deep dive's Brief Writer would follow the ShortUpdateCrew's training. `train` refuses it.
+- **Both commands write a `project_id` into pyproject.toml** (`[tool.crewai]`, crewai's own; no network).
+- **`crewai eval` isn't used**: it grades runs on CrewAI AMP (traces uploaded, `crewai login`), which the spec
+  allows only if it works without an account.
+- **The what-if runs on the ShortUpdateCrew**, not the deep dive's `pricing_analysis` (spec): the DeepDiveCrew
+  can't checkpoint in crewai 1.15.33 (decisions #59).
+
 ## Later milestones' commands
 
-M8d adds `crewai test` / `crewai train` and the checkpoint what-if.
+M9: polish and the fresh-clone check.
 
 ## How one weekly run flows, end to end
 
