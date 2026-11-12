@@ -46,7 +46,7 @@ fastest (its analyses run in parallel). For a fixed pipeline, the explicit proce
 | Week 3 references weeks 1-2 via memory | Met: its "since last week" compares with week 2's threat levels and knows the Kolkata roles were already open (M7) |
 | Revise loop works; `learn=True` changes the next draft | Met: one week-1 note became two lessons; week 2's headline reached review at 15 words instead of 19 (M6) |
 | Kill mid-deep-dive, resume skips finished tasks | Partly: the DeepDiveCrew can't checkpoint in crewai 1.15.33 (decisions #59). The ShortUpdateCrew resumes from its checkpoint, and `run --resume` skips a week's finished paid steps |
-| `pytest` < 60 s, no network, no model calls, no OpenAI key | 250 tests, no network or model calls, no OpenAI key; **~82 s** on a 2-core machine (decisions, M9) |
+| `pytest` < 60 s, no network, no model calls, no OpenAI key | 252 tests, no network or model calls, no OpenAI key; **~82 s** on a 2-core machine (decisions, M9) |
 | Week-2 material recall 100%, every claim cites, spend ≤ $12 | Met: 100%, 100%, $2.13 |
 
 **The flow**, as `crewai flow plot` draws it ([docs/flow_plot.html](docs/flow_plot.html), interactive):
@@ -622,11 +622,16 @@ The fresh-clone check (spec M9 acceptance), in a scratch directory with its own 
 ```bash
 git clone <this repo> /tmp/p3-fresh && cd /tmp/p3-fresh
 uv sync && uv run python scripts/gen_world.py      # regenerates exactly the committed data/ and knowledge/
-cp <your .env> .env && uv run pytest               # 250 passed
+cp <your .env> .env && uv run pytest               # 252 passed
 uv run python scripts/serve_fakeweb.py &           # the fake web the scouts scrape
 P3_REVIEW=async uv run crewai run --inputs '{"week": 1}'
 uv run compintel pending && uv run compintel review <id> "approve"
 ```
+
+The first live run of it found a bug: two week-1 scouts ended with an answer that wasn't a report, crewai's
+converter turned each into a made-up "StockSathi, week 0" report, and the week was published without
+BahiBook. Each scout now has a guardrail (crewai's agent `guardrail`): a report for another company or week is
+rejected and the scout re-run, and if it keeps failing the run stops (decisions #132).
 
 `crewai run` has no `--review` flag: `P3_REVIEW` (`.env`) picks the reviewer for it, `console` (default) or
 `async`. Also in M9: the faithfulness judge reads last week's published brief (prompt v2; it had flagged true

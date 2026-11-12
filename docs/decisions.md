@@ -798,6 +798,20 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
 131. **Cost per weekly run is measured, not estimated**: ledger rows summed over each published run's steps
      (`runs/steps.jsonl` timestamps): routine $0.025-0.028, material $0.074 (README, Results). Week 2's
      published run resumed after a crash, so its scouting is the first attempt's.
+132. **Each scout checks that its report is for its company and week** (`scouting.report_for`, crewai's agent
+     `guardrail`, `guardrail_max_retries=2`), and the scouts run `Agent.kickoff` in worker threads instead of
+     `kickoff_async`. Live in the fresh clone, two of three week-1 scouts ended with an answer that wasn't a
+     SignalReport; crewai's converter (`Agent._build_output_from_result`) made one up from that text
+     (company "StockSathi", week 0, no signals), `scout_company` accepted it, and as `scout_all` keyed by the
+     report's own company one overwrote the other: the week was published without BahiBook. Now a wrong
+     report is rejected and the scout re-run; after the retries the run stops, and `scout_all` keys by the
+     requested company. Two crewai 1.15.33 bugs shape this: (a) the agent guardrail's retry calls the sync
+     `_execute_and_build_output`, whose `executor.invoke` inside a running event loop returns an un-awaited
+     coroutine, so under `kickoff_async` every retry crashes (`'coroutine' object has no attribute 'get'`);
+     a worker thread has no loop, so `kickoff` runs sync and the retry works, the three still concurrent.
+     (b) The retry's `invoke` clears the messages, so the guardrail's error text never reaches the model: a
+     retry is a clean re-run (~$0.003). The guardrail prints the rejected answer to stderr, so the next
+     failure shows what the scout said (this one wasn't kept).
 
 ## M9 findings
 
@@ -809,6 +823,15 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   real subprocesses (MCP servers over stdio, the async review resumed in another process). `pytest-xdist`
   (not in spec §19.2, so not added) measured 63 s with 2 workers here; more cores would do better.
 - **Publishing is a third of a routine week's cost**: memory saves each fact with an LLM analysis.
+- **Fresh clone, live** (developer, 2026-11-12): `P3_REVIEW=async crewai run --inputs '{"week": 1}'`, then
+  `compintel review <id> "approve"`, ran end to end (scout, routine route, short update, async review,
+  publish), but published a degraded week 1: scout reports StockSathi 0 signals, ShelfMitra 3, BahiBook
+  missing (the main repo's week 1: 8, 7, 4), materiality 0.45 instead of 2.32. Two scouts' answers had
+  become placeholder reports (#132). Not the environment: the same scouts with scripted decisions on an empty
+  `runs/` (real tools, MCP server, ONNX embedder, fake web) got every tool's data, and `Search memory` on the
+  empty store answers "No relevant memories found." The first attempt also hit a full disk (`uv sync`: no
+  space for lancedb); Playwright's Chromium and uv's unused cache were removed. The clone's own fake web
+  server didn't start (port 8765 held by one left running from the main repo; same files, so no effect).
 - **v2 judge baseline** (developer, 2026-11-12): faithfulness 96.2 (v1: 96.5), quality 50.0 (48.6), the rest
   unchanged. The previous-brief claims are no longer flagged; the four claims still flagged each add something
   no source says (week 1 "lowest entry price", week 2 "no measured adoption yet", week 3 an unchanged

@@ -44,5 +44,8 @@
   - A checkpointing crew can't be kicked off twice: the second kickoff resumes and skips every task
     (`crewai test`/`train` run with `checkpoint = False`, decisions #125). Training keeps one feedback per agent
     per iteration (#126).
-- **Tests**: 250 passing (`uv run pytest`, about 82 s; the spec's target is 60 s). `uv run ruff check .`,
+  - An agent `guardrail`'s retry crashes under `Agent.kickoff_async` (crewai calls the sync executor inside
+    the loop): the scouts run `kickoff` in worker threads (#132).
+  - A fake web server left running holds port 8765: `pgrep -af serve_fakeweb` before starting another.
+- **Tests**: 252 passing (`uv run pytest`, about 82 s; the spec's target is 60 s). `uv run ruff check .`,
   `uv run pyright` are clean.

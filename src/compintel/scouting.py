@@ -2,8 +2,9 @@
 
 Two implementations of the same fan-out, kept side by side for the M2 comparison (docs/decisions.md):
 
-- `scout_all`      — three single agents, `Agent.kickoff_async(..., response_format=SignalReport)` under
-                     `asyncio.gather`. No Crew, no Task: the agent *is* the unit of work. The Flow uses this.
+- `scout_all`      — three single agents, `Agent.kickoff(..., response_format=SignalReport)` in worker
+                     threads under `asyncio.gather` (M2-M8: `kickoff_async`; see `scout_company`). No Crew,
+                     no Task: the agent *is* the unit of work. The Flow uses this.
 - `scout_all_crew` — a one-agent, one-task `Crew` run per company with `crew.kickoff_for_each(inputs=[...])`.
 """
 
@@ -12,9 +13,11 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import sys
 from typing import Any
 
 from crewai import Agent, BaseLLM, Crew, CrewOutput, Process, Task
+from crewai.lite_agent_output import LiteAgentOutput
 from crewai.mcp import MCPServerStdio
 from crewai.utilities.pydantic_schema_utils import generate_model_description
 from crewai_tools import ScrapeWebsiteTool
@@ -32,6 +35,7 @@ SCOUT_ROLE = "Competitive Signal Scout"
 MARKET_COMMAND = "market-signals"
 # A scout makes ~6 tool calls (pricing, changelog, careers ×2, news, funding, ratings) before answering.
 SCOUT_LIMITS = {**AGENT_LIMITS, "max_iter": 10}
+SCOUT_RETRIES = 2  # a retry re-runs the whole scout (~$0.003)
 # During the tool loop crewai sends no response schema, so the model can't know SignalReport's fields; only
 # the Converter (a separate LLM call after the loop) sees it. Put the same schema in the prompt, built by the
 # same crewai helper: the final answer then validates directly and the conversion call is skipped.
@@ -57,6 +61,37 @@ def market_mcp(week: int) -> MCPServerStdio:
     )
 
 
+def report_for(company: str, week: int) -> Any:
+    """The scout's guardrail (crewai's agent kickoff guardrail): its answer is this company's week report.
+
+    M9 fresh clone, live: two of three week-1 scouts ended with an answer that wasn't a SignalReport, and
+    crewai's converter made one up from it (company "StockSathi", week 0, no signals). Keyed by company, one
+    overwrote the other and the flow published a brief without BahiBook. On failure crewai runs the scout
+    again, up to `guardrail_max_retries`, then raises: the run stops instead of publishing a partial week.
+    crewai's retry starts the conversation afresh (`invoke` clears the messages), so the error text never
+    reaches the model; it's printed, with the rejected answer, for the run's log (decisions #132). A function,
+    not a callable object: crewai's guardrail events read its source.
+    """
+
+    def scout_report_guardrail(output: Any) -> tuple[bool, Any]:
+        report = output.pydantic
+        if not isinstance(report, SignalReport):
+            problem = "no SignalReport"
+        elif (report.company, report.week) != (company, week):
+            problem = f"a report for {report.company} week {report.week}"
+        else:
+            return True, report
+        print(
+            f"[scout guardrail] {company} week {week}: rejected {problem}; the scout answered: "
+            f"{output.raw[:500]!r}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False, f"The final answer must be the SignalReport for {company}, week {week}; got {problem}."
+
+    return scout_report_guardrail
+
+
 def make_scout(
     week: int, llm: BaseLLM | None = None, verbose: bool = False, company: str | None = None
 ) -> Agent:
@@ -80,6 +115,8 @@ def make_scout(
         # it before the kickoff, so week 3's scout knows weeks 1-2. No company (the kickoff_for_each demo,
         # one agent for all three): no memory, or the three would share one scope.
         memory=scout_view(company) if company else None,
+        guardrail=report_for(company, week) if company else None,
+        guardrail_max_retries=SCOUT_RETRIES,
         verbose=verbose,
         **SCOUT_LIMITS,
     )
@@ -121,17 +158,21 @@ async def scout_company(
     company: str, week: int, llm: BaseLLM | None = None, verbose: bool = False
 ) -> SignalReport:
     agent = make_scout(week, llm, verbose, company=company)
-    # kickoff_async: the non-blocking twin of Agent.kickoff, so three scouts can wait on I/O concurrently.
-    out = await agent.kickoff_async(scout_prompt(company, week), response_format=SignalReport)
-    if not isinstance(out.pydantic, SignalReport):
-        raise ValueError(f"{company} scout returned no SignalReport: {out.raw[:300]!r}")
-    return out.pydantic
+    # Each scout in a worker thread (they still run concurrently), not Agent.kickoff_async: crewai 1.15.33's
+    # agent guardrail retries through the sync executor, which inside a running event loop hands back an
+    # un-awaited coroutine and the retry crashes. A worker thread has no loop, so the retry runs (#132).
+    out = await asyncio.to_thread(agent.kickoff, scout_prompt(company, week), response_format=SignalReport)
+    assert isinstance(out, LiteAgentOutput)  # a coroutine only inside an event loop; a worker thread has none
+    report = out.pydantic
+    if not isinstance(report, SignalReport) or (report.company, report.week) != (company, week):
+        raise ValueError(f"{company} scout returned no week-{week} SignalReport for it: {out.raw[:300]!r}")
+    return report
 
 
 async def scout_all(week: int, llm: BaseLLM | None = None, verbose: bool = False) -> dict[str, SignalReport]:
     """Fan out one scout per competitor concurrently; each builds its own LLM unless one is injected."""
     reports = await asyncio.gather(*(scout_company(c.name, week, llm, verbose) for c in COMPANIES))
-    return {r.company: r for r in reports}
+    return {c.name: r for c, r in zip(COMPANIES, reports, strict=True)}
 
 
 def scout_all_crew(week: int, llm: BaseLLM | None = None, verbose: bool = False) -> dict[str, SignalReport]:

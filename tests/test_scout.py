@@ -95,6 +95,42 @@ def test_scout_all_fans_out_to_three_companies(scout_llm):
     assert set(script.tool_outputs) == set(reports)
 
 
+class PlaceholderFirst(ScriptedScout):
+    """The M9 fresh-clone failure: the first `bad` conversions of `company`'s answer make up another company's
+    week-0 report (what crewai's converter did with a scout answer that wasn't a report)."""
+
+    def __init__(self, base_url: str, week: int, company: str, bad: int):
+        super().__init__(base_url, week)
+        self.company, self.bad, self.runs = company, bad, 0
+
+    def __call__(self, messages, response_model):
+        if response_model is SignalReport and f"{self.company} scouted." in json.dumps(messages, default=str):
+            self.runs += 1
+            if self.runs <= self.bad:
+                return {"company": "StockSathi", "week": 0, "summary": "placeholder", "signals": []}
+        return super().__call__(messages, response_model)
+
+
+def test_a_scout_answer_for_the_wrong_company_or_week_is_retried(world, capsys):
+    hooks.install()
+    script = PlaceholderFirst(world, week=1, company="BahiBook", bad=1)
+    reports = asyncio.run(scouting.scout_all(1, llm=ScriptedLLM(Rule(script))))
+    assert {c: (r.company, r.week) for c, r in reports.items()} == {
+        c: (c, 1) for c in ("StockSathi", "ShelfMitra", "BahiBook")
+    }
+    assert script.runs == 2  # rejected once, then a clean re-run of the scout (real MCP, inside the loop)
+    rejected = "[scout guardrail] BahiBook week 1: rejected a report for StockSathi week 0"
+    assert rejected in capsys.readouterr().err
+
+
+def test_a_scout_that_never_reports_for_its_company_stops_the_run(world):
+    hooks.install()
+    script = PlaceholderFirst(world, week=1, company="BahiBook", bad=99)
+    with pytest.raises(Exception, match="guardrail"):
+        asyncio.run(scouting.scout_all(1, llm=ScriptedLLM(Rule(script))))
+    assert script.runs == 1 + scouting.SCOUT_RETRIES
+
+
 def test_kickoff_for_each_alternative_gives_the_same_shape(scout_llm):
     script, llm = scout_llm
     reports = scouting.scout_all_crew(2, llm=llm)
