@@ -15,12 +15,13 @@ run`, full report in [evals/report.md](evals/report.md)).
 | Week | Story | Route (expected) | Key signals found | Threat levels vs truth | Claims the judge didn't fully accept | Rumor | Cost |
 |---|---|---|---:|---:|---:|---|---:|
 | 1 | quiet baseline | routine (routine) | 0/0 | 3/3 | 1 of 14 | – | $0.028 |
-| 2 | price cut, Series B, Kolkata hiring | **material** (material) | 4/4 | 3/3 | 2 of 18 | – | $0.074 |
-| 3 | one subtle signal, one rumor | routine (routine) | 4/4 | 2/3 | 1 of 20 | discounted, never claimed | $0.025 |
+| 2 | price cut, Series B, Kolkata hiring | **material** (material) | 4/4 | 3/3 | 1 of 18 | – | $0.074 |
+| 3 | one subtle signal, one rumor | routine (routine) | 4/4 | 2/3 | 2 of 20 | discounted, never claimed | $0.025 |
 
-Faithfulness (Haiku judge, 3 samples): 96.5%. Every claim cites a signal and every cited id exists. Week 3's
-miss: BahiBook rated low, ground truth medium. Week 1's unsupported claim calls StockSathi's ₹499 "the lowest
-entry price" (BahiBook's is ₹399), the kind of error only the judge catches.
+Faithfulness (Haiku judge, 3 samples, prompt v2): 96.2%. Every claim cites a signal and every cited id exists.
+Week 3's miss: BahiBook rated low, ground truth medium. Week 1's unsupported claim calls StockSathi's ₹499 "the
+lowest entry price" (BahiBook's is ₹399), the kind of error only the judge catches; the others add what no
+source says ("no measured adoption yet", "the first GST e-invoicing hire in this tracker").
 
 **Cost per weekly run** (from the cost ledger, by run):
 

@@ -809,6 +809,12 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   real subprocesses (MCP servers over stdio, the async review resumed in another process). `pytest-xdist`
   (not in spec §19.2, so not added) measured 63 s with 2 workers here; more cores would do better.
 - **Publishing is a third of a routine week's cost**: memory saves each fact with an LLM analysis.
+- **v2 judge baseline** (developer, 2026-11-12): faithfulness 96.2 (v1: 96.5), quality 50.0 (48.6), the rest
+  unchanged. The previous-brief claims are no longer flagged; the four claims still flagged each add something
+  no source says (week 1 "lowest entry price", week 2 "no measured adoption yet", week 3 an unchanged
+  Enterprise price and "the first GST e-invoicing hire in this tracker").
+- **Flow plot screenshot**: `docs/flow_plot.png`, from `docs/flow_plot.html` with Playwright's Chromium
+  (`uvx --from playwright`, not a project dependency).
 
 ## Open questions for the developer
 
