@@ -5,7 +5,7 @@ competitors, built on CrewAI 1.15.33 with Anthropic Claude only.
 Full spec: [p3-crewai-competitive-intelligence.md](p3-crewai-competitive-intelligence.md).
 Version pins, API verification and every deviation from the spec: [docs/decisions.md](docs/decisions.md).
 
-**Status:** M8c (eval harness `evals/`, baseline and regression gate) built; its judged run and baseline are the developer's next step. M8d (`crewai test/train`, checkpoint what-if) next.
+**Status:** M8c (eval harness `evals/`, baseline and regression gate) done: M8 acceptance met (faithfulness 96.5%, week-2 material recall 100%, rumor never claimed). M8d (`crewai test/train`, checkpoint what-if) next.
 
 ## Setup
 

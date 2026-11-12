@@ -12,7 +12,7 @@
 
 ## Where things stand (handoff)
 
-- **Done: M0–M7, M8a, M8b and M8c** (M8c's judged run + baseline are the developer's), one commit each (`git log`). The README's status line and its per-milestone sections say what
+- **Done: M0–M7, M8a, M8b and M8c** (baseline in `evals/baseline.json`; `python -m evals run --gate` before merging changes to prompts or crews), one commit each (`git log`). The README's status line and its per-milestone sections say what
   each milestone added and how to run it; `docs/decisions.md` has every decision and live finding, numbered.
 - **Next: M8d** (`crewai test` / `eval` / `train` with Anthropic, checkpoint TUI what-if), then M9.
   Live reviews: use `--review async` + `compintel review <id> "approve"`; the console prompt received only empty

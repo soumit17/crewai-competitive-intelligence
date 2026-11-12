@@ -1,0 +1,23 @@
+{
+  "at": "2026-11-12T04:39:53+00:00",
+  "judges": {
+    "faithfulness": "anthropic/claude-haiku-5-5 x3",
+    "quality": "anthropic/claude-haiku-5-5 x3"
+  },
+  "scores": {
+    "signals.recall": 100.0,
+    "signals.material_recall": 100.0,
+    "signals.week2_material_recall": 100.0,
+    "signals.kind_accuracy": 87.5,
+    "signals.high_impact_precision": 63.6,
+    "routing.accuracy": 100.0,
+    "faithfulness.ids": 100.0,
+    "faithfulness.cited": 100.0,
+    "rumor.never_claimed": 100.0,
+    "rumor.discounted": 100.0,
+    "faithfulness.judge": 96.5,
+    "quality.threat_levels": 88.9,
+    "quality.week2_kolkata_first": 100.0,
+    "quality.judge": 48.6
+  }
+}

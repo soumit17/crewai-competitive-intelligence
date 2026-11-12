@@ -701,7 +701,14 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   or on earlier weeks, which the judge didn't see). Real ones remain: week 1 calls StockSathi's ₹499 "the
   lowest entry price" though BahiBook's Solo is ₹399; "all of ShelfMitra's roles are in Mumbai" from two cited
   roles; "no measured adoption yet" from nothing.
-- **Sonnet scored quality higher than Haiku** (64.6 vs 43.8-54.2, one sample each).
+- **With context and 3 samples (developer, 2026-11-12) the judges are steady**: faithfulness 96.5 / 95.8 / 96.5
+  over three runs, Haiku quality 48.6 / 49.3; the gate passed; **M8 acceptance met** (week-2 material recall
+  100%, rumor never claimed, faithfulness 96.5 >= 95). What the judge still flags is real: the week-1 "lowest
+  entry price" error (unanimous), "no measured adoption yet", "the only new item", "the first GST
+  e-invoicing hire in this tracker". Baseline saved (Haiku x3 for both judges).
+- **Sonnet scores quality higher than Haiku** (61.2 vs ~49, 3 samples each); both name the same weaknesses:
+  padded briefs (concise 2.3-3), week 2 not leading with the Kolkata threat.
+- **No human scores**: the developer chose not to score the briefs, so judge-vs-human agreement isn't measured.
 - **Test suite: 235 tests, ~85 s.**
 
 ## Open questions for the developer
