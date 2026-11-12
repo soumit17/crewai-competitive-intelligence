@@ -25,8 +25,9 @@ ACCEPTANCE = {
 }
 
 
-def evaluate(runs: list[WeekRun], faith_llm: Any = None, quality_llm: Any = None) -> dict:
+def evaluate(runs: list[WeekRun], faith_llm: Any = None, quality_llm: Any = None, samples: int = 3) -> dict:
     known = {}
+    context = faithfulness.our_facts() if faith_llm is not None else ""
     per_week: dict[int, dict] = {}
     for run in sorted(runs, key=lambda r: r.week):
         known.update(run.signals)  # this week's and every earlier week's signals
@@ -38,9 +39,11 @@ def evaluate(runs: list[WeekRun], faith_llm: Any = None, quality_llm: Any = None
             "checks": quality.week_checks(run),
         }
         if faith_llm is not None:
-            per_week[run.week]["faithfulness_judge"] = faithfulness.judge_week(run, dict(known), faith_llm)
+            per_week[run.week]["faithfulness_judge"] = faithfulness.judge_week(
+                run, dict(known), faith_llm, samples=samples, context=context
+            )
         if quality_llm is not None:
-            per_week[run.week]["quality_judge"] = quality.judge_week(run, quality_llm)
+            per_week[run.week]["quality_judge"] = quality.judge_week(run, quality_llm, samples=samples)
 
     pick = lambda key: {w: d[key] for w, d in per_week.items() if key in d}  # noqa: E731
     scores = {
@@ -146,14 +149,22 @@ def markdown(result: dict, judges: dict[str, str], baseline: dict[str, float | N
         )
         w.append(f"- Threat levels: {', '.join(f'{k} {v}' for k, v in c['threat_levels'].items())}")
         if fj := d.get("faithfulness_judge"):
-            bad = [v for v in fj["verdicts"] if v["verdict"] != "supported"]
-            w.append(f"- Faithfulness judge: {fj['judged']} claims, {len(bad)} not fully supported")
-            w.extend(f"  - {v['verdict']} ({v['section']}): {v['claim'][:90]} → {v['reason']}" for v in bad)
+            bad = [v for v in fj["verdicts"] if v["score"] < 1]
+            w.append(
+                f"- Faithfulness judge ({fj['samples']} samples): {fj['judged']} claims, "
+                f"{len(bad)} not fully supported, {fj['split']} where the samples disagreed"
+            )
+            w.extend(
+                f"  - {v['score']:.2f} ({'/'.join(x[0] for x in v['verdicts'])}, {v['section']}): "
+                f"{v['claim'][:90]} → {v['reason']}"
+                for v in bad
+            )
         if qj := d.get("quality_judge"):
             w.append(
                 "- Quality judge: "
                 + ", ".join(f"{k} {qj[k]}" for k in quality.CRITERIA)
-                + f" (mean {qj['mean']}): {qj['comment']}"
+                + f" (mean {qj['mean']}, {qj['samples']} samples, max spread {qj['max_spread']}): "
+                + qj["comment"]
             )
         if (h := result["human"].get(int(week))) is not None:
             w.append("- Your scores: " + ", ".join(f"{k} {h[k]}" for k in quality.CRITERIA))

@@ -45,11 +45,21 @@ def judge_prompt(run: WeekRun) -> str:
     )
 
 
-def judge_week(run: WeekRun, llm: Any) -> dict:
-    raw = llm.call([{"role": "user", "content": judge_prompt(run)}], response_model=RubricScore)
-    out = raw if isinstance(raw, RubricScore) else RubricScore.model_validate_json(str(raw))
-    scores = {c: getattr(out, c) for c in CRITERIA}
-    return {**scores, "mean": round(sum(scores.values()) / len(scores), 2), "comment": out.comment}
+def judge_week(run: WeekRun, llm: Any, samples: int = 3) -> dict:
+    """The rubric, `samples` times; each criterion scores its mean (one sample moved by ~10 points live)."""
+    outs = []
+    for _ in range(samples):
+        raw = llm.call([{"role": "user", "content": judge_prompt(run)}], response_model=RubricScore)
+        outs.append(raw if isinstance(raw, RubricScore) else RubricScore.model_validate_json(str(raw)))
+    scores = {c: round(sum(getattr(o, c) for o in outs) / len(outs), 2) for c in CRITERIA}
+    spread = max(max(getattr(o, c) for o in outs) - min(getattr(o, c) for o in outs) for c in CRITERIA)
+    return {
+        **scores,
+        "mean": round(sum(scores.values()) / len(scores), 2),
+        "samples": samples,
+        "max_spread": spread,
+        "comment": outs[0].comment,
+    }
 
 
 def week_checks(run: WeekRun) -> dict:

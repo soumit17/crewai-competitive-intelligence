@@ -113,7 +113,7 @@ def test_a_rumor_stated_as_fact_and_a_rumor_left_undiscounted_both_fail():
 def faith_judge(*verdicts: str) -> ScriptedLLM:
     def answer(messages, response_model):
         prompt = messages[-1]["content"]
-        assert "[StockSathi-2-1] (credibility 0.9) Pro cut 30% to ₹699 per month" in prompt
+        assert "[StockSathi-2-1] (credibility 0.9, impact high, novelty new) Pro cut 30% to ₹699" in prompt
         n = prompt.count("Claim ")
         return {"verdicts": [{"n": i, "verdict": verdicts[(i - 1) % len(verdicts)], "reason": "r"}
                              for i in range(1, n + 1)]}  # fmt: skip
@@ -123,16 +123,46 @@ def faith_judge(*verdicts: str) -> ScriptedLLM:
 
 def test_faithfulness_judge_scores_supported_partial_and_unsupported_in_one_call():
     llm = faith_judge("supported", "partial", "unsupported", "supported")
-    j = faithfulness.judge_week(run(), run().signals, llm)
+    j = faithfulness.judge_week(run(), run().signals, llm, samples=1)
     assert len(llm.calls) == 1 and llm.calls[0]["response_model"] is faithfulness.FaithfulnessVerdicts
     # Claims citing an existing signal: tl_dr, since_last_week, 3 threats, 1 recommendation.
     assert j["judged"] == 6 and j["points"] == 1 + 0.5 + 0 + 1 + 1 + 0.5
     assert [v["verdict"] for v in j["verdicts"]][:3] == ["supported", "partial", "unsupported"]
 
 
+def test_the_judge_sees_our_own_facts_and_earlier_weeks():
+    """Live M8c: claims resting on KiranaCloud's knowledge base (₹799 Dukaan, the ₹649 floor, the roadmap)
+    or on last week ("after last week's cut") were judged unsupported because the judge saw neither."""
+    known = {**run().signals, "StockSathi-1-2": sig("StockSathi-1-2", "Pro at ₹999 per month")}
+    llm = faith_judge("supported")
+    faithfulness.judge_week(run(), known, llm, samples=1, context="Dukaan plan: ₹799/month. Floor: ₹649.")
+    prompt = llm.calls[0]["messages"][-1]["content"]
+    assert "## KiranaCloud's own facts\nDukaan plan: ₹799/month. Floor: ₹649." in prompt
+    assert "## Earlier weeks' signals\n[StockSathi-1-2] (credibility 0.9, impact medium" in prompt
+
+
+def test_our_facts_are_the_knowledge_bases_markdown(world):
+    facts = faithfulness.our_facts()
+    assert "₹799" in facts and "Khata on UPI" in facts
+
+
+def test_samples_are_averaged_per_claim_and_disagreement_is_counted():
+    answers = iter(["supported", "supported", "unsupported"])  # one verdict for every claim, per sample
+
+    def answer(messages, response_model):
+        verdict = next(answers)
+        n = messages[-1]["content"].count("Claim ")
+        return {"verdicts": [{"n": i, "verdict": verdict, "reason": "r"} for i in range(1, n + 1)]}
+
+    j = faithfulness.judge_week(run(), run().signals, ScriptedLLM(Rule(answer)), samples=3)
+    assert j["samples"] == 3 and j["split"] == 6
+    assert all(v["score"] == round(2 / 3, 3) and v["verdict"] == "supported" for v in j["verdicts"])
+    assert j["verdicts"][0]["verdicts"] == ["supported", "supported", "unsupported"]
+
+
 def test_a_claim_the_judge_skips_counts_as_unsupported():
     llm = ScriptedLLM(Rule(lambda m, rm: {"verdicts": [{"n": 1, "verdict": "supported", "reason": "ok"}]}))
-    j = faithfulness.judge_week(run(), run().signals, llm)
+    j = faithfulness.judge_week(run(), run().signals, llm, samples=1)
     assert j["points"] == 1 and sum(v["verdict"] == "unsupported" for v in j["verdicts"]) == 5
 
 
@@ -142,9 +172,16 @@ def quality_judge(score: int = 4) -> ScriptedLLM:
 
 def test_quality_judge_sees_the_rendered_brief_and_maps_to_0_100():
     llm = quality_judge(4)
-    q = quality.judge_week(run(), llm)
+    q = quality.judge_week(run(), llm, samples=1)
     assert q["mean"] == 4 and "# Week 02: Kolkata threat rises" in llm.calls[0]["messages"][-1]["content"]
     assert quality.scores({2: quality.week_checks(run())}, {2: q})["quality.judge"] == 75.0
+
+
+def test_quality_samples_are_averaged_and_their_spread_reported():
+    answers = iter([3, 5])
+    llm = ScriptedLLM(Rule(lambda m, rm: dict.fromkeys(quality.CRITERIA, next(answers)) | {"comment": "c"}))
+    q = quality.judge_week(run(), llm, samples=2)
+    assert q["mean"] == 4 and q["max_spread"] == 2 and len(llm.calls) == 2
 
 
 # ---------------------------------------------------------------- scoring, baseline, gate, acceptance
@@ -208,3 +245,18 @@ def faith_judge_any() -> ScriptedLLM:
 def test_an_unpublished_week_is_refused(world):
     with pytest.raises(ValueError, match="week 1 isn't published"):
         load_weeks()
+
+
+def test_human_scores_from_the_command_line(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from evals.__main__ import app
+
+    monkeypatch.setattr(quality, "HUMAN_SCORES", tmp_path / "human_scores.json")
+    result = CliRunner().invoke(app, ["human", "2", "4", "3", "5", "3"])
+    assert result.exit_code == 0, result.output
+    assert "week 2: actionable 4, prioritized 3, kolkata_focus 5, concise 3" in result.output
+    assert quality.human_scores() == {
+        2: {"actionable": 4, "prioritized": 3, "kolkata_focus": 5, "concise": 3}
+    }
+    assert CliRunner().invoke(app, ["human", "1", "4", "9", "5", "3"]).exit_code != 0  # 9 isn't a 1-5 score

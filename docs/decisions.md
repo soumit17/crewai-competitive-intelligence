@@ -681,6 +681,12 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
      prompt received only empty answers on the developer's terminal (M8b).
 114. **The process comparison is quoted, not re-run**: it was a one-off live experiment (M4); `evals/compare.py`
      carries its committed table into the report.
+115. **The faithfulness judge gets the writers' context**: KiranaCloud's own facts (the knowledge base's
+     markdown) and the earlier weeks' signals, plus each signal's impact and novelty. Without them it marked
+     true claims (₹799 Dukaan, the ₹649 floor, the roadmap, "after last week's cut") as unsupported.
+116. **Judges are sampled 3 times and averaged** (`--samples`), per claim and per rubric criterion; the sample
+     count is part of the judge's name in the baseline, so a different count isn't gated against it.
+117. **Your scores from the command line** too: `python -m evals human 2 4 3 5 3`.
 
 ## M8c findings
 
@@ -688,7 +694,15 @@ Grep used: `grep -rnE '"(gpt-…|openai/…)"' crewai/` + `DEFAULT_LLM_MODEL` us
   rumor never claimed and discounted, threat levels 8/9 (week 3 BahiBook low, expected medium). High-impact
   precision 63.6%: week 2 6/6, week 3 1/5, because the week-3 scouts rated an *unchanged* Pro price and a
   re-listed careers page `high`. Novelty `repeat` isn't keeping repeats out of `high`.
-- **Test suite: 230 tests, ~83 s.**
+- **First judged runs (developer, 2026-11-12): one judge sample is too noisy for a 3-point gate.** The same
+  briefs, the same Haiku judge: faithfulness 89.4 → 85.6 → 80.8, quality 54.2 → 43.8. The gate run failed on
+  noise alone. Of 17 claims rejected at least once, 6 were rejected in only some runs.
+- **Most rejections were the judge's blind spots, not the briefs'** (11 of 17 rested on KiranaCloud's own facts
+  or on earlier weeks, which the judge didn't see). Real ones remain: week 1 calls StockSathi's ₹499 "the
+  lowest entry price" though BahiBook's Solo is ₹399; "all of ShelfMitra's roles are in Mumbai" from two cited
+  roles; "no measured adoption yet" from nothing.
+- **Sonnet scored quality higher than Haiku** (64.6 vs 43.8-54.2, one sample each).
+- **Test suite: 235 tests, ~85 s.**
 
 ## Open questions for the developer
 

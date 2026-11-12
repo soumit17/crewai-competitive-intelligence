@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -95,14 +96,16 @@ class FaithfulnessVerdicts(BaseModel):
     verdicts: list[ClaimVerdict]
 
 
-JUDGE_INSTRUCTIONS = """You check a competitive-intelligence brief against its sources. Each numbered claim
-below lists the source signals it cites. Judge only from those signals, not from what you know.
+JUDGE_INSTRUCTIONS = """You check a competitive-intelligence brief written for KiranaCloud ("we", "our")
+against its sources. Each numbered claim below lists the competitor signals it cites. Two more sources are
+allowed: KiranaCloud's own facts (its pricing, roadmap, team), and the signals of earlier weeks, for claims
+about what changed or is new. Judge only from these sources, not from what you know.
 
 - supported: every fact in the claim (numbers, prices, places, names, direction of a change) is stated in or
-  directly follows from the cited signals. A recommendation or threat level is supported when the cited
-  signals give a reasonable basis for it.
-- partial: mostly supported, but one detail goes beyond the cited signals.
-- unsupported: a fact contradicts the signals or appears in none of them, or the claim states as fact
+  directly follows from the cited signals, KiranaCloud's facts, or earlier weeks' signals. A recommendation or
+  threat level is supported when the sources give a reasonable basis for it.
+- partial: mostly supported, but one detail goes beyond the sources.
+- unsupported: a fact contradicts the sources or appears in none of them, or the claim states as fact
   something a signal with credibility below 0.5 only reports.
 
 Return one verdict per claim, using its number."""
@@ -110,43 +113,75 @@ Return one verdict per claim, using its number."""
 VERDICT_SCORE = {"supported": 1.0, "partial": 0.5, "unsupported": 0.0}
 
 
-def judge_prompt(items: list[tuple[int, Claim]], known: dict[str, Signal]) -> str:
-    lines = [JUDGE_INSTRUCTIONS, ""]
+def our_facts() -> str:
+    """KiranaCloud's own facts: the knowledge base the crews read (markdown files; the PDF is a template)."""
+    from compintel.config import get_settings
+
+    files = sorted(get_settings().p3_knowledge_dir.glob("*.md"))
+    return "\n\n".join(f.read_text().strip() for f in files)
+
+
+def signal_line(s: Signal) -> str:
+    fields = f"credibility {s.source_credibility}, impact {s.impact_on_us}, novelty {s.novelty}"
+    return f"[{s.id}] ({fields}) {s.detail}"
+
+
+def judge_prompt(items: list[tuple[int, Claim]], known: dict[str, Signal], week: int, context: str) -> str:
+    earlier = [s for s in known.values() if int(s.id.split("-")[1]) < week]
+    lines = [JUDGE_INSTRUCTIONS, "", "## KiranaCloud's own facts", context or "(none)", ""]
+    lines += ["## Earlier weeks' signals", *([signal_line(s) for s in earlier] or ["(none: week 1)"]), ""]
+    lines += ["## Claims", ""]
     for n, c in items:
         lines.append(f"Claim {n} ({c.section}): {c.text}")
-        for i in c.ids:
-            s = known.get(i)
-            if s is not None:
-                lines.append(f"  - [{i}] (credibility {s.source_credibility}) {s.detail}")
+        lines += [f"  - {signal_line(known[i])}" for i in c.ids if i in known]
         lines.append("")
     return "\n".join(lines)
 
 
-def judge_week(run: WeekRun, known: dict[str, Signal], llm: Any) -> dict:
-    """One call: every claim that cites at least one existing signal. Uncited claims are counted by `ids`."""
+def judge_week(run: WeekRun, known: dict[str, Signal], llm: Any, samples: int = 3, context: str = "") -> dict:
+    """`samples` calls over every claim that cites an existing signal (uncited claims are counted by `ids`);
+    each claim scores the mean of its samples. Live M8c: one sample per run moved the week's score by up
+    to 9 points between identical runs, more than the gate's 3."""
     items = [(n, c) for n, c in enumerate(claims(run.brief), 1) if any(i in known for i in c.ids)]
     if not items:
-        return {"judged": 0, "score": None, "verdicts": []}
-    raw = llm.call(
-        [{"role": "user", "content": judge_prompt(items, known)}], response_model=FaithfulnessVerdicts
-    )
-    out = raw if isinstance(raw, FaithfulnessVerdicts) else FaithfulnessVerdicts.model_validate_json(str(raw))
-    by_n = {v.n: v for v in out.verdicts}
+        return {"judged": 0, "points": 0.0, "samples": samples, "verdicts": []}
+    prompt = judge_prompt(items, known, run.week, context)
+    rounds: list[dict[int, ClaimVerdict]] = []
+    for _ in range(samples):
+        raw = llm.call([{"role": "user", "content": prompt}], response_model=FaithfulnessVerdicts)
+        out = (
+            raw
+            if isinstance(raw, FaithfulnessVerdicts)
+            else FaithfulnessVerdicts.model_validate_json(str(raw))
+        )
+        rounds.append({v.n: v for v in out.verdicts})
     verdicts = []
     for n, c in items:
-        v = by_n.get(n)
-        verdict = v.verdict if v else "unsupported"  # a claim the judge skipped isn't given the benefit
+        got = [r.get(n) for r in rounds]
+        # A claim a sample skipped isn't given the benefit of the doubt.
+        labels = [v.verdict if v else "unsupported" for v in got]
+        score = sum(VERDICT_SCORE[label] for label in labels) / len(labels)
+        reasons = [v.reason if v else "no verdict returned" for v, lab in zip(got, labels, strict=True)
+                   if lab != "supported"]  # fmt: skip
         verdicts.append(
             {
                 "n": n,
                 "section": c.section,
                 "claim": c.text,
-                "verdict": verdict,
-                "reason": v.reason if v else "no verdict returned",
+                "score": round(score, 3),
+                "verdicts": labels,
+                "verdict": Counter(labels).most_common(1)[0][0],  # the majority (ties: the first sample's)
+                "reason": reasons[0] if reasons else "",
+                "unanimous": len(set(labels)) == 1,
             }
         )
-    points = sum(VERDICT_SCORE[v["verdict"]] for v in verdicts)
-    return {"judged": len(verdicts), "points": points, "verdicts": verdicts}
+    return {
+        "judged": len(verdicts),
+        "points": round(sum(v["score"] for v in verdicts), 3),
+        "samples": samples,
+        "split": sum(not v["unanimous"] for v in verdicts),
+        "verdicts": verdicts,
+    }
 
 
 def scores(

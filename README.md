@@ -513,10 +513,10 @@ route) against ground truth. Every metric is 0-100, so one rule gates them all: 
 | Command | Cost | What it does |
 |---|---|---|
 | `uv run python -m evals run --no-judge` | $0 | Deterministic metrics only |
-| `uv run python -m evals human` | $0 | Writes `evals/human_scores.json` for your blind 1-5 scores |
-| `uv run python -m evals run` | ~$0.01 | + Haiku judges: faithfulness (one batched call per week) and quality |
-| `uv run python -m evals run --final` | ~$0.05 | Quality judged by Sonnet instead (the spec's one Sonnet pass) |
-| `uv run python -m evals run --save-baseline` / `--gate` | ~$0.01 | Save the baseline / exit 1 on a regression |
+| `uv run python -m evals human 2 4 3 5 3` | $0 | Your blind 1-5 scores for week 2 (actionable, prioritized, Kolkata focus, concise) |
+| `uv run python -m evals run` | ~$0.02 | + Haiku judges, 3 samples each, averaged: faithfulness (batched per week) and quality |
+| `uv run python -m evals run --final` | ~$0.06 | Quality judged by Sonnet instead (the spec's Sonnet pass) |
+| `uv run python -m evals run --save-baseline` / `--gate` | ~$0.02 | Save the baseline / exit 1 on a regression |
 
 | Metric | How |
 |---|---|
@@ -525,12 +525,13 @@ route) against ground truth. Every metric is 0-100, so one rule gates them all: 
 | `signals.high_impact_precision` | Signals rated `high` that match a material / must-surface expectation (plain precision would punish true but unlisted signals) |
 | `routing.accuracy` | Published route = expected route |
 | `faithfulness.ids`, `faithfulness.cited` | Every cited id exists (this week or earlier); TL;DR, threats and recommendations cite |
-| `faithfulness.judge` | Haiku: does each claim follow from the signals it cites? (supported 1, partial 0.5) |
+| `faithfulness.judge` | Haiku: does each claim follow from the signals it cites, our own facts (knowledge base) and earlier weeks? (supported 1, partial 0.5; mean of 3 samples) |
 | `rumor.never_claimed`, `rumor.discounted` | No must-not-claim phrase outside discounted claims; the week-3 rumor listed there by id |
 | `quality.threat_levels`, `quality.week2_kolkata_first` | Threat levels vs ground truth; Kolkata leads week 2 |
 | `quality.judge` | Rubric (actionable, prioritized, Kolkata focus, concise), 1-5 mapped to 0-100 |
 
-A judged metric is gated only against a baseline judged by the same model. `evals/report.md` has the latest
+A judged metric is gated only against a baseline judged by the same model and sample count: one sample
+moved faithfulness by 9 points between identical runs, more than the 3-point gate. `evals/report.md` has the latest
 run, week by week, with every claim the judge didn't fully accept, and the M4 process comparison table.
 
 ## Later milestones' commands

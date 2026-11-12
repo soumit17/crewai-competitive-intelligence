@@ -11,16 +11,13 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 @app.command()
 def run(
-    judge: bool = typer.Option(
-        True, "--judge/--no-judge", help="Haiku judges (faithfulness, quality). ~$0.01."
-    ),
-    final: bool = typer.Option(
-        False, "--final", help="Quality judged by MODEL_FINAL (Sonnet), once. ~$0.05."
-    ),
+    judge: bool = typer.Option(True, "--judge/--no-judge", help="Haiku judges (faithfulness, quality)."),
+    final: bool = typer.Option(False, "--final", help="Quality judged by MODEL_FINAL (Sonnet)."),
     save_baseline: bool = typer.Option(False, "--save-baseline", help="Make this run evals/baseline.json."),
     gate: bool = typer.Option(
         False, "--gate", help="Exit 1 on a drop of more than 3 points vs the baseline."
     ),
+    samples: int = typer.Option(3, "--samples", min=1, help="Calls per judge per week, averaged."),
 ) -> None:
     """Score the three published weeks; write evals/report.md and runs/evals/<time>.json."""
     from compintel.config import LONG_OUTPUT_MAX_TOKENS, get_settings, make_llm, model_id
@@ -36,30 +33,30 @@ def run(
         raise typer.BadParameter("the judges need ANTHROPIC_API_KEY (or run --no-judge)")
     faith = make_llm(max_tokens=LONG_OUTPUT_MAX_TOKENS) if judge else None
     qual = make_llm(final=final, max_tokens=LONG_OUTPUT_MAX_TOKENS) if judge else None
-    judges = {"faithfulness": model_id(), "quality": model_id(final)} if judge else {}
+    # The sample count is part of the judge: an average of 3 isn't comparable with a single sample.
+    judges = {"faithfulness": f"{model_id()} x{samples}", "quality": f"{model_id(final)} x{samples}"}
+    judges = judges if judge else {}
 
     from crewai.events.event_bus import crewai_event_bus
 
     before = get_ledger().spent_usd
-    result = scoring.evaluate(runs, faith_llm=faith, quality_llm=qual)
+    result = scoring.evaluate(runs, faith_llm=faith, quality_llm=qual, samples=samples)
     crewai_event_bus.flush()
     baseline = scoring.comparable(scoring.load_baseline(), judges)
     scoring.REPORT.write_text(scoring.markdown(result, judges, baseline))
     saved = scoring.save_run({**result, "judges": judges})
     for metric, value in result["scores"].items():
+        shown = "-" if value is None else value
         before_value = baseline.get(metric)
         print(
-            f"{metric:34} {'-' if value is None else value:>6}"
-            + (f"   (baseline {before_value})" if before_value is not None else "")
+            f"{metric:34} {shown:>6}" + (f"   (baseline {before_value})" if before_value is not None else "")
         )
     unmet = scoring.acceptance(result["scores"])
     print("M8 acceptance: " + ("met" if not unmet else "NOT met: " + "; ".join(unmet)))
     if result.get("agreement"):
         print(f"judge vs your scores: mean abs diff {result['agreement']['mean_abs_diff']}")
-    print(
-        f"report: {scoring.REPORT}   raw: {saved}   cost ${get_ledger().spent_usd - before:.4f}, "
-        f"P3 total ${get_ledger().spent_usd:.4f}"
-    )
+    spent = get_ledger().spent_usd
+    print(f"report: {scoring.REPORT}   raw: {saved}   cost ${spent - before:.4f}, P3 total ${spent:.4f}")
     if save_baseline:
         if not judge:
             raise typer.BadParameter("a baseline needs the judges' metrics too: drop --no-judge")
@@ -75,17 +72,27 @@ def run(
 
 
 @app.command()
-def human() -> None:
-    """Write evals/human_scores.json for your blind 1-5 scores (keeps scores you already gave)."""
+def human(
+    week: int = typer.Argument(None, min=1, max=3, help="Week to score (omit: show your scores so far)."),
+    scores: list[int] = typer.Argument(
+        None, help="Four 1-5 scores: actionable prioritized kolkata_focus concise."
+    ),
+) -> None:
+    """Your blind 1-5 scores, kept in evals/human_scores.json. `human 2 4 3 5 3` scores week 2."""
     from evals import quality
 
     path = quality.HUMAN_SCORES
-    template = quality.human_template([1, 2, 3])
+    data = quality.human_template([1, 2, 3])
     if path.exists():
-        existing = json.loads(path.read_text())
-        template.update({k: v for k, v in existing.items() if not k.startswith("_")})
-    path.write_text(json.dumps(template, indent=2) + "\n")
-    print(f"fill in {path}: 1-5 per criterion per week, reading briefs/week-01.md .. week-03.md")
+        data.update({k: v for k, v in json.loads(path.read_text()).items() if not k.startswith("_")})
+    if week is not None:
+        if not scores or len(scores) != len(quality.CRITERIA) or not all(1 <= x <= 5 for x in scores):
+            raise typer.BadParameter(f"give four scores, 1-5: {' '.join(quality.CRITERIA)}")
+        data[str(week)] = dict(zip(quality.CRITERIA, scores, strict=True))
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    for w in ("1", "2", "3"):
+        given = ", ".join(f"{c} {data[w][c] if data[w][c] is not None else '-'}" for c in quality.CRITERIA)
+        print(f"week {w}: {given}")
 
 
 if __name__ == "__main__":
